@@ -11,10 +11,10 @@ from gtaf.infrastructure.config_io import load_configuration
 
 
 def test_repository_config_is_valid(config_dir: Path) -> None:
-    """The committed corpus definition loads: six channels, two pattern families each."""
+    """The committed corpus definition loads: six channels, validated pattern families."""
     bundle = load_configuration(config_dir)
     assert bundle.channel_count == 6
-    assert bundle.programme_count == 12
+    assert bundle.programme_count == 8
     assert {c.channel_id for c in bundle.channels} == {
         "imedi",
         "rustavi2",

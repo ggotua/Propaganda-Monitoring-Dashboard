@@ -1,19 +1,21 @@
 # STATUS — GTAF
 
-Last updated: 2026-11-12. Branch: `spec-000-kickoff`, tracking `origin`
+Last updated: 2026-11-13. Branch: `spec-000-kickoff`, tracking `origin`
 (`github.com/ggotua/Propaganda-Monitoring-Dashboard`).
 Sessions: (1) kickoff · (2) architecture decisions · (3) SPEC-001 written · (4) SPEC-001 implemented ·
-(5) feasibility measured.
+(5) feasibility measured · (6) SPEC-002 implemented.
 
 ## Where the project stands
 
-**The foundation exists and is verified, and feasibility is no longer unknown.** SPEC-001 is
-implemented — package skeleton, corpus configuration, DuckDB schema, JSON logging, four CLI commands
-— with 47 tests passing and ruff/mypy clean. The caption probe produced real numbers: 99 videos,
-100 % auto-captioned in Georgian, zero manual captions.
+**Foundation and collector both exist and are verified.** SPEC-001 gives the schema, config, logging
+and CLI; SPEC-002 gives a working collector — 86 tests, ruff/mypy clean, and a live run that stored
+3 videos, 875 caption cues and 3 immutable raw payloads. A window has been collected end to end for
+the first time.
 
-**No collector and no data yet.** One environment question remains open: whether the CPU embedding
-chain installs on Python 3.13.1 (D-007), which is *unproven* rather than failed.
+**What is still missing:** text normalisation and everything downstream of it. No sentences, no
+segments, no topics, no report. The database holds 3 videos out of an expected ~20–33k per year, so
+the backfill has not been run. One environment question remains open: whether the CPU embedding chain
+installs on Python 3.13.1 (D-007), which is *unproven* rather than failed.
 
 ### What feasibility established
 
@@ -56,6 +58,7 @@ were taken during implementation.
 | D-010 | Benchmark picks primary LLM; validator always a different vendor; gateway refuses over-budget runs |
 | D-011 | Interpreter chain check runs as a spike, not inside SPEC-001's dependency set |
 | D-012 | Tbilisi date is a fixed UTC+4 constant (Windows has no tz database; `tzdata` not worth a dependency) |
+| D-013 | DuckDB 2.0 enforces foreign keys: read-then-write upserts, and a committed cue delete before the parent update |
 
 ## Gate state
 
@@ -67,6 +70,7 @@ were taken during implementation.
 | G3 — Feasibility | **Closed (measured 2026-11-12)** — 99/99 captioned, 0 manual; D-008 still requires SPEC-002's full backfill to re-measure across the whole archive |
 | Remote | **Closed** — pushed, verified against the remote |
 | SPEC-001 | **Approved and implemented** — evidence in the spec's Implementation Status |
+| SPEC-002 | **Approved and implemented** — collector works live; 86 tests; evidence in the spec |
 | D-007 interpreter chain | **Open, unproven** — `spikes/bertopic_chain_check.py` exits 3 (absent ≠ incompatible) |
 
 ## Waiting on the physical world
@@ -92,7 +96,7 @@ These cost hours this session and will cost them again if forgotten:
   one approval each.
 - **pytest needs help in this sandbox.** The workspace root denies `DeleteSubdirectoriesAndFiles`,
   so pytest cannot manage its own temp dirs; pass `--basetemp=.tmp\pytest` and recreate `.tmp`
-  when it is poisoned, or run the suite unconfined. 47 tests pass this way.
+  when it is poisoned, or run the suite unconfined. 86 tests pass this way.
 - **Python 3.13.1 has no tz database on Windows**; `zoneinfo("Asia/Tbilisi")` needs `tzdata`.
   D-012 avoids it with a fixed UTC+4 constant.
 - **yt-dlp needs `playlistend`** when listing a channel or it paginates the whole upload history
@@ -102,15 +106,15 @@ These cost hours this session and will cost them again if forgotten:
 
 ## Next session, in order
 
-1. Write **SPEC-002** (collector), now informed by measurement rather than guesses:
-   - `[SW]` Structured; channel→video listing with `playlistend`, `json3` captions to
-     `data/raw/<channel>/<date>/<video_id>.json3` (immutable), upsert keyed on `video_id`.
-   - Programme matching from `config/programmes.yaml`, expecting **≈69 % `NULL`** — the collector
-     must report per-channel coverage so an empty channel is visible.
-   - Per-video skips (age gate, removed, live chat) must never abort a run; only client-level blocks
-     stop it. This was learned the hard way in the probe.
-   - Exclude non-transcript caption tracks (`live_chat`) from `caption_kind`.
-   - Accept both bulletin-length and clip-length videos, and flag live streams > 2 h.
+1. **SPEC-003 (normaliser)** on a 30-video sample: merge `json3` cues into timestamped sentences,
+   strip ASR artefacts, and — the part nothing has measured yet — **assess ASR quality** so the NER
+   and attribution risks become evidence rather than a warning.
+2. **Run a real backfill** to 2026-10-01 once SPEC-003 proves the pipeline: `gtaf collect` per
+   channel without `--limit`. Expect ≈69 % `NULL` programmes and report per-channel coverage.
+3. **Settle D-007**: install the CPU stack, re-run `spikes/bertopic_chain_check.py`, and record the
+   verdict before SPEC-006/007 choose engines.
+4. Delete `spikes/caption_feasibility.py` once `gtaf collect` has replaced it in practice; it is now
+   only the reproduction command behind `FEASIBILITY.md`.
 2. Then SPEC-003 (normaliser) on a 30-video sample, measuring ASR *quality* — the one thing
    feasibility did not measure.
 3. `docs/steering/{tech-stack,conventions,principles}.md` are now written from what is true rather

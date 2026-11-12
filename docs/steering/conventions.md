@@ -49,9 +49,14 @@ running them, not by annotations).
   non-throwaway database; changes go in `002_*.sql`.
 - Migration files use **full-line comments only** — the runner drops comment lines before splitting
   on `;`, so a trailing comment or a semicolon in a statement line breaks it.
-- Inserts are idempotent: `INSERT … ON CONFLICT (natural key) DO UPDATE`. A re-run must not
-  duplicate rows.
-- `REFERENCES` is documentation in DuckDB; referential integrity is asserted in code.
+- Inserts are idempotent: read the row, then insert or `UPDATE` only the differing columns.
+  **Do not use `INSERT … ON CONFLICT DO UPDATE` on a table that other tables reference** — DuckDB
+  implements it as delete-then-insert and the constraint check rejects it (D-013).
+- **DuckDB 2.0 enforces `FOREIGN KEY` constraints.** Parent rows cannot be updated while children
+  reference them, and a same-transaction child delete is not seen by the check: commit the child
+  delete first, then update the parent.
+- Referential integrity is therefore enforced by the database; assertions in code cover what the
+  schema cannot express (cue contiguity, date consistency, segment bounds).
 
 ## Logging
 

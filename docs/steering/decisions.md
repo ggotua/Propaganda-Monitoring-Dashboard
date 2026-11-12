@@ -392,3 +392,41 @@ Consequences: correct for every date this project will handle, and wrong in prin
 historical date before 2005 or a future DST reintroduction. Both are one constant away, and the
 constant carries a comment saying so. Revisit if: the corpus acquires pre-2005 material, or
 Georgia changes its offset.
+
+---
+
+## D-013: DuckDB 2.0 enforces foreign keys — writes must respect that
+
+Status: Accepted (2026-11-13). Established by implementing and testing SPEC-002; **corrects a factual
+assumption in SPEC-001 §5.2**, which asserted the opposite.
+
+Context: SPEC-001 §5.2 claimed DuckDB's referential-integrity enforcement was incomplete and that
+`REFERENCES` was documentation only. Implementing the collector disproved it: the database rejected a
+programme for an unconfigured channel, a video naming a missing programme, and a caption outliving its
+video. Three write patterns then failed in ways that took real debugging:
+
+1. `INSERT … ON CONFLICT DO UPDATE` on `channels`/`programmes` fails while child rows reference the
+   row, because the upsert is implemented as delete-then-insert.
+2. `UPDATE` of a parent row fails while children reference it — and the check does **not** see a
+   child `DELETE` executed in the same transaction.
+3. Updating a video's indexed `programme_id` is rejected even after the cue delete, until that delete
+   is committed.
+
+Decision: treat the schema's foreign keys as live constraints, and write accordingly:
+- channel/programme writes are **read-then-write** — `INSERT` when absent, `UPDATE` only the columns
+  that actually differ, and a no-op when nothing differs (which also makes a re-run cheap);
+- `upsert_video` replaces cues in **two transactions**: commit the cue `DELETE`, then `UPDATE`/insert
+  the video and its cues. The non-atomic window is accepted because the raw payload is already on
+  disk and a re-run converges.
+
+Rejected:
+- Dropping the `FOREIGN KEY` clauses to keep `ON CONFLICT` — throwing away a guarantee the database is
+  willing to provide, to preserve a syntax preference.
+- Doing the whole thing in one transaction with ordered statements — measured not to work; the check
+  evaluates before the transaction's delete is visible.
+- Caching "row exists" state in the application — a second source of truth about the schema.
+
+Consequences: two write paths are more verbose than an upsert, and `upsert_video` has a small
+non-atomic window that only a crash can expose. Both are documented at the call site. Revisit if: a
+later DuckDB release makes upserts on referenced parents legal, in which case this can be simplified
+and this entry marked Superseded.

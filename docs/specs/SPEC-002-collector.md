@@ -256,4 +256,92 @@ cues 2–4M/year.
 
 ## Implementation Status
 
-STATUS: NOT STARTED — awaiting `.status` = `approved`.
+STATUS: COMPLETE
+Implemented: 2026-11-13
+Approved: 2026-11-13 (George)
+
+### Files created
+
+| Path | Purpose |
+|---|---|
+| `src/gtaf/domain/collector.py` | `UploadRef`, `CaptionCue`, `VideoMeta`, caption classification, programme matching, window rule, error classification |
+| `src/gtaf/application/collect.py` | `VideoSource`/`RawStore`/`Repository` protocols, `collect_channel`, `run_collection`, coverage counters |
+| `src/gtaf/infrastructure/youtube.py` | yt-dlp adapter, `json3` parsing, per-video vs client-level failure split |
+| `src/gtaf/infrastructure/raw_store.py` | immutable raw payloads (`open("x")` — write once) |
+| `src/gtaf/infrastructure/repository.py` | DuckDB writes respecting foreign keys (D-013) |
+| `src/gtaf/cli.py` | `collect` subcommand + exit code 5 (blocked) |
+| `tests/test_collector_rules.py` | 15 domain-rule tests (cases 3–8, 10) |
+| `tests/test_collect.py` | 14 use-case tests against fakes (cases 1, 2, 9, 11–14) |
+| `tests/test_repository.py` | 5 database tests incl. live idempotency and FK behaviour |
+
+### Verification with evidence
+
+```
+Claim:     Lint clean across source, tests and spikes
+Command:   .venv\Scripts\python.exe -m ruff check src/ tests/ spikes/
+Exit code: 0
+Summary:   All checks passed!
+Verdict:   PASS
+
+Claim:     Strict type check clean
+Command:   .venv\Scripts\python.exe -m mypy
+Exit code: 0
+Summary:   Success: no issues found in 20 source files
+Verdict:   PASS
+
+Claim:     All collector tests pass, none touching the network
+Command:   .venv\Scripts\python.exe -m pytest -q
+Exit code: 0
+Summary:   86 passed
+Verdict:   PASS
+
+Claim:     Live collection stores videos, cues and raw payloads (FR-1, FR-2, FR-9)
+Command:   gtaf init-db data\gtaf.duckdb; gtaf collect --channel imedi --limit 3
+Exit code: 0
+Summary:   run ok; listed 120, kept 3, captioned 3, unclassified 2, skipped 0
+           videos 3, captions 875, programmes 1, watermark 2026-11-12
+           3 raw json3 files (29 KB, 462 KB, 32 KB)
+           rows: imedi_news (1863 s), NULL (130 s), NULL (151 s) — all auto/ka
+Verdict:   PASS
+
+Claim:     Re-running the same window does not duplicate rows (FR-3)
+Command:   gtaf collect --channel imedi --limit 3   (second run)
+Exit code: 0
+Summary:   videos 3, captions 875, raw files 3 — identical; only a new runs row
+Verdict:   PASS
+```
+
+The `runs` table retains a `failed` row from the run where the foreign-key defect below first
+surfaced. It is left in place deliberately: the history of a broken run is evidence, not clutter.
+
+### Deviations from the original spec
+
+1. **`upsert_video` uses two transactions, and channel/programme writes are read-then-write**
+   (D-013). The spec assumed `ON CONFLICT DO UPDATE` would work. DuckDB 2.0 enforces foreign keys and
+   rejects an upsert on a referenced parent, and it does not see a same-transaction child delete. The
+   non-atomic window in cue replacement is documented at the call site; a crash is repaired by a
+   re-run, because the raw payload is already on disk.
+2. **SPEC-001 §5.2 was factually wrong and is corrected.** It claimed `REFERENCES` was documentation
+   only. The database enforces it.
+3. **`--limit` counts kept videos per channel**, not per programme type. The spec's §3.1 wording was
+   ambiguous; per-channel is simpler and makes the coverage report interpretable.
+4. **The probe (`spikes/caption_feasibility.py`) keeps its own copy of the classification rules.**
+   The spec said the algorithm would exist once, in `domain/collector.py`, and the probe would be
+   superseded by `gtaf collect` rather than refactored. That is what happened — the probe is retained
+   only as the reproduction command behind `FEASIBILITY.md` and should be deleted once SPEC-003 lands.
+5. **No `youtube_channel_id` is ever resolved or stored yet.** The column exists and the upsert
+   preserves it, but this spec never needed the `UC…` id; resolving it belongs to a later increment.
+
+### Lessons learned
+
+- The single most valuable test in this spec is `test_age_gate_is_not_a_block`: it pins the exact
+  behaviour that destroyed a 240-video feasibility run. A unit test is cheaper than that lesson was.
+- DuckDB's foreign-key behaviour is not "incomplete" or "documented only" — it is enforced, with
+  quirks that are only discoverable by running it. Guessing cost three iterations.
+- A live re-run is the only honest proof of idempotency; the fake-repository test would pass even if
+  the SQL were wrong.
+
+### Next
+
+SPEC-003 (normaliser) on a 30-video sample, which also measures ASR *quality* — the one question
+`FEASIBILITY.md` explicitly did not answer.

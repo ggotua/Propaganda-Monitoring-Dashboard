@@ -19,10 +19,14 @@ import importlib
 import platform
 import sys
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 
+from gtaf.application.collect import ClientBlockedError, CollectPlan, run_collection
 from gtaf.application.config import ConfigError
 from gtaf.application.initialize import SchemaVersionError, initialize_database, read_schema_version
+from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
+from gtaf.domain.models import Programme
 from gtaf.infrastructure.config_io import load_configuration
 from gtaf.infrastructure.db import (
     DatabaseLockedError,
@@ -32,12 +36,16 @@ from gtaf.infrastructure.db import (
     open_database,
 )
 from gtaf.infrastructure.logging_setup import log_event, setup_logging
+from gtaf.infrastructure.raw_store import FileRawStore
+from gtaf.infrastructure.repository import DuckDBRepository
+from gtaf.infrastructure.youtube import YtDlpSource
 
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_CONFIG = 2
 EXIT_SCHEMA = 3
 EXIT_LOCKED = 4
+EXIT_BLOCKED = 5
 
 _REQUIRED_IMPORTS: tuple[str, ...] = ("duckdb", "pydantic", "yaml")
 
@@ -67,6 +75,22 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path("data"),
         help="directory the write probe targets (default: data)",
     )
+
+    collect = sub.add_parser("collect", help="collect videos and captions for in-window videos")
+    collect.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"),
+                         help="database file (default: data/gtaf.duckdb)")
+    collect.add_argument("--config-dir", type=Path, default=Path("config"))
+    collect.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
+    collect.add_argument("--log-dir", type=Path, default=Path("logs"))
+    collect.add_argument("--channel", default=None,
+                         help="collect a single channel_id instead of all active channels")
+    collect.add_argument("--since", default="2026-10-01", help="earliest publish date (ISO)")
+    collect.add_argument("--limit", type=int, default=20,
+                         help="maximum videos kept per channel (default: 20)")
+    collect.add_argument("--listing-limit", type=int, default=120,
+                         help="maximum uploads listed per channel; bounds pagination")
+    collect.add_argument("--throttle", type=float, default=2.0,
+                         help="seconds to sleep after every network call (default: 2.0)")
 
     return parser
 
@@ -199,6 +223,83 @@ def _write_probe(probe_dir: Path) -> tuple[bool, str]:
         probe.unlink(missing_ok=True)
 
 
+def _cmd_collect(
+    *,
+    config_dir: Path,
+    db_path: Path,
+    raw_dir: Path,
+    log_dir: Path,
+    channel: str | None,
+    since: str,
+    limit: int,
+    listing_limit: int,
+    throttle: float,
+) -> int:
+    """Collect in-window videos and captions, then print a coverage report (FR-10, §3.7).
+
+    Args:
+        config_dir: Directory holding the corpus configuration.
+        db_path: Database file.
+        raw_dir: Root for immutable raw payloads.
+        log_dir: Directory for the JSON log.
+        channel: Restrict to one ``channel_id``, or None for all active channels.
+        since: Earliest publish date, ISO-8601.
+        limit: Maximum videos kept per channel.
+        listing_limit: Maximum uploads listed per channel.
+        throttle: Seconds to sleep after every network call.
+
+    Returns:
+        Process exit code.
+    """
+    logger = setup_logging(log_dir)
+    bundle = load_configuration(config_dir)
+
+    channels = [candidate for candidate in bundle.channels if candidate.active]
+    if channel is not None:
+        channels = [candidate for candidate in channels if candidate.channel_id == channel]
+        if not channels:
+            raise ConfigError([f"--channel '{channel}' is not an active configured channel"])
+
+    programmes_by_channel: dict[str, list[Programme]] = {}
+    for programme in bundle.programmes:
+        programmes_by_channel.setdefault(programme.channel_id, []).append(programme)
+
+    conn = connect(db_path, read_only=False)
+    try:
+        version = read_schema_version(conn)
+        if version != SUPPORTED_SCHEMA_VERSION:
+            raise SchemaVersionError(version, SUPPORTED_SCHEMA_VERSION)
+        plan = CollectPlan(
+            since=date.fromisoformat(since), limit=limit, listing_limit=listing_limit
+        )
+        result = run_collection(
+            channels,
+            programmes_by_channel,
+            plan,
+            source=YtDlpSource(throttle=throttle),
+            repo=DuckDBRepository(conn),
+            raw_store=FileRawStore(raw_dir),
+            logger=logger,
+        )
+    finally:
+        conn.close()
+
+    print(f"run {result.run_id}: {result.status}")
+    header = (
+        f"{'channel':<22}{'listed':>7}{'kept':>6}{'capt':>6}{'nocap':>7}"
+        f"{'unclass':>9}{'skip':>6}"
+    )
+    print(header)
+    print("-" * len(header))
+    for report in result.reports:
+        print(
+            f"{report.name_en[:21]:<22}{report.listed:>7}{report.kept:>6}"
+            f"{report.captioned:>6}{report.no_caption:>7}{report.unclassified:>9}"
+            f"{report.skipped:>6}"
+        )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -218,6 +319,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_check_config(args.config_dir)
         if args.command == "doctor":
             return _cmd_doctor(args.json, args.data_dir)
+        if args.command == "collect":
+            return _cmd_collect(
+                config_dir=args.config_dir,
+                db_path=args.db,
+                raw_dir=args.raw_dir,
+                log_dir=args.log_dir,
+                channel=args.channel,
+                since=args.since,
+                limit=args.limit,
+                listing_limit=args.listing_limit,
+                throttle=args.throttle,
+            )
     except ConfigError as exc:
         for violation in exc.violations:
             print(f"  - {violation}", file=sys.stderr)
@@ -232,6 +345,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     except DatabaseNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_ERROR
+    except ClientBlockedError as exc:
+        # The run row has already been marked 'blocked' in the database (SPEC-002 FR-7).
+        print(f"blocked: {exc}", file=sys.stderr)
+        return EXIT_BLOCKED
     except Exception as exc:  # noqa: BLE001 - top-level guard; anything else is exit 1
         print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return EXIT_ERROR

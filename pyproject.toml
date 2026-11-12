@@ -47,6 +47,11 @@ warn_unreachable = true
 module = "yaml"
 ignore_missing_imports = true
 
+# yt-dlp ships no annotations either; same reasoning as yaml, and the adapter is the only caller.
+[[tool.mypy.overrides]]
+module = "yt_dlp.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

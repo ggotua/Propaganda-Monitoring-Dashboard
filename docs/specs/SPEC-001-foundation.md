@@ -276,13 +276,25 @@ CREATE TABLE validation (
 );
 ```
 
-### 5.2 Why no foreign-key reliance
+### 5.2 Foreign keys — corrected after measurement
 
-DuckDB's referential-integrity enforcement is incomplete across operations and versions. The
-`REFERENCES` clauses above are documentation and best-effort; **enforcement is in code** —
-every insert path asserts that its parent exists, in the same transaction, before writing
-(`domain/invariants.py` predicates called by the application layer). A reviewer must not read
-`REFERENCES` as a guarantee.
+This section originally claimed that DuckDB's referential-integrity enforcement is "incomplete",
+and that `REFERENCES` should therefore be read as documentation only. **That was wrong, and an
+implemented test disproved it** (SPEC-002, 2026-11-12): DuckDB **2.0.0 does enforce `FOREIGN KEY`
+constraints on write**. A programme row naming an unconfigured channel is rejected, a video cannot
+name a non-existent programme, and captions cannot outlive their video.
+
+The practical consequence is the reverse of what was written here: the schema is *stronger* than
+the original text assumed, and two write patterns had to change to respect it (D-013):
+
+- an upsert on a row that child rows reference must be a **read-then-write** (insert if absent,
+  `UPDATE` only the differing columns), because `ON CONFLICT DO UPDATE` is implemented as a
+  delete-then-insert and fails while children exist;
+- replacing a video's cue rows requires the `DELETE` to be **committed before** the parent `UPDATE`,
+  because the constraint check does not see a same-transaction child delete.
+
+Code-level assertions remain, for the rules DuckDB cannot express: caption index contiguity
+(INV-3), `broadcast_date_local` consistency (INV-5), and segment bounds (INV-7).
 
 ### 5.3 Time conventions
 
