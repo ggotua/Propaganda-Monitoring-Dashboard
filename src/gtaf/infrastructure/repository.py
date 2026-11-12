@@ -261,6 +261,20 @@ class DuckDBRepository:
             self._conn.execute("ROLLBACK")
             raise
 
+    def has_video(self, video_id: str) -> bool:
+        """Report whether a video is already stored.
+
+        Args:
+            video_id: YouTube video id.
+
+        Returns:
+            True when the row exists.
+        """
+        row = self._conn.execute(
+            "SELECT 1 FROM videos WHERE video_id = ?", [video_id]
+        ).fetchone()
+        return row is not None
+
     def start_run(self, stage: str, params_json: str) -> str:
         """Open a run row.
 

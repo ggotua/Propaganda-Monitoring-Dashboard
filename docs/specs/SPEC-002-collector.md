@@ -231,15 +231,30 @@ the evidence this spec rests on.
 
 ## 9. Scalability check
 
-Volume: 6 channels × ~8–15 uploads/day × 365 ≈ 20–33k videos/year; ~10 segments/video later; caption
-cues 2–4M/year.
+**Measured 2026-11-13, first backfill (Imedi).** These numbers replace the estimates this section
+originally carried, because the estimates were too optimistic.
 
-- Listing is one request per channel page (bounded by `playlistend`), never one per video.
-- Caption fetch is one request per video; the 2 s throttle dominates runtime (~15 min per 240 videos).
-- Inserts are batched per video in one transaction; no query runs inside a loop.
-- Raw files are small (a 30-minute transcript is tens of KB); 33k/year is a few GB at most.
-- **Revisit if**: a full-year backfill exceeds 4 hours, then raise `--throttle` exploitation or shard
-  by channel-date; or YouTube rate-limits at the default throttle, then it is raised, never bypassed.
+| Quantity | Estimate at authoring | Measured |
+|---|---|---|
+| Uploads per day, one channel | "~8–15" | **~27** (Imedi: 245 videos over 9 days) |
+| Listing entries to cover the window | 120 suggested as enough | **~1,300–1,500 per channel** for 43 days; 300 entries covered only 9 days |
+| Videos in the full 2026-10-01 → 2026-11-12 window | "~2,000" | **~7,000** across six channels at Imedi's rate |
+| Throughput | not stated | **~7 s per video** (2 s throttle × 2 network calls + latency + write) |
+| Full backfill duration | "a few hours" | **~13 h**, i.e. overnight-plus, and it excludes analysis time |
+
+Consequences that change how this runs:
+
+- `--listing-limit` is a **coverage parameter, not a safety valve**. The default 120 is right for a
+  smoke run and wrong for a backfill; a backfill must use ≥1500 or paginate by date. Leaving it at
+  300 silently truncates the window to nine days, which is what the first attempt did.
+- A full backfill must be **chunked per channel** and resumable (`--skip-existing`), because it is
+  longer than any single working session and collection is exclusive (D-014).
+- Caption payloads dominate storage: 245 videos produced **13.3 MB** of DuckDB and 87,482 cues;
+  raw `json3` files are comparable. A full window is on the order of 400 MB, which is fine.
+
+**Revisit if**: throughput falls below ~5 s/video (a block, or heavier retries), or the window grows
+beyond what an overnight run covers — then collection needs to run unattended on a schedule
+(SPEC-010) rather than by hand.
 
 ---
 

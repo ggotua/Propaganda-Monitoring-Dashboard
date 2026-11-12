@@ -91,6 +91,9 @@ def _build_parser() -> argparse.ArgumentParser:
                          help="maximum uploads listed per channel; bounds pagination")
     collect.add_argument("--throttle", type=float, default=2.0,
                          help="seconds to sleep after every network call (default: 2.0)")
+    collect.add_argument("--skip-existing", action="store_true",
+                         help="do not re-fetch videos already in the database (makes a long "
+                              "backfill resumable after an interruption)")
 
     return parser
 
@@ -234,6 +237,7 @@ def _cmd_collect(
     limit: int,
     listing_limit: int,
     throttle: float,
+    skip_existing: bool = False,
 ) -> int:
     """Collect in-window videos and captions, then print a coverage report (FR-10, §3.7).
 
@@ -270,7 +274,10 @@ def _cmd_collect(
         if version != SUPPORTED_SCHEMA_VERSION:
             raise SchemaVersionError(version, SUPPORTED_SCHEMA_VERSION)
         plan = CollectPlan(
-            since=date.fromisoformat(since), limit=limit, listing_limit=listing_limit
+            since=date.fromisoformat(since),
+            limit=limit,
+            listing_limit=listing_limit,
+            skip_existing=skip_existing,
         )
         result = run_collection(
             channels,
@@ -287,7 +294,7 @@ def _cmd_collect(
     print(f"run {result.run_id}: {result.status}")
     header = (
         f"{'channel':<22}{'listed':>7}{'kept':>6}{'capt':>6}{'nocap':>7}"
-        f"{'unclass':>9}{'skip':>6}"
+        f"{'unclass':>9}{'skip':>6}{'had':>6}"
     )
     print(header)
     print("-" * len(header))
@@ -295,7 +302,7 @@ def _cmd_collect(
         print(
             f"{report.name_en[:21]:<22}{report.listed:>7}{report.kept:>6}"
             f"{report.captioned:>6}{report.no_caption:>7}{report.unclassified:>9}"
-            f"{report.skipped:>6}"
+            f"{report.skipped:>6}{report.already_present:>6}"
         )
     return EXIT_OK
 
@@ -330,6 +337,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 limit=args.limit,
                 listing_limit=args.listing_limit,
                 throttle=args.throttle,
+                skip_existing=args.skip_existing,
             )
     except ConfigError as exc:
         for violation in exc.violations:

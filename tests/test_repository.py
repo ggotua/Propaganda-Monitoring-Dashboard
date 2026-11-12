@@ -150,6 +150,19 @@ def test_programme_for_unknown_channel_is_rejected_by_the_database(initialized_d
     assert channels is not None and channels[0] == 1
 
 
+def test_has_video_reports_presence(initialized_db: Path) -> None:
+    """The resumability check must not report a stored video as absent."""
+    conn = connect(initialized_db)
+    try:
+        repo = DuckDBRepository(conn)
+        _seed(repo)
+        assert repo.has_video("vid1") is False
+        repo.upsert_video(_video(), (CaptionCue(0, 0.0, 2.0, "a"),))
+        assert repo.has_video("vid1") is True
+    finally:
+        conn.close()
+
+
 def test_run_lifecycle(initialized_db: Path) -> None:
     """A run opens as `running` and finalises with status, counts and watermark (INV-8)."""
     conn = connect(initialized_db)

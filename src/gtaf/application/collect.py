@@ -118,6 +118,19 @@ class Repository(Protocol):
         """Insert or update one video and replace its cue rows atomically."""
         ...
 
+    def has_video(self, video_id: str) -> bool:
+        """Report whether a video is already stored.
+
+        Args:
+            video_id: YouTube video id.
+
+        Returns:
+            True when the video row exists. Used to make a backfill resumable at video granularity
+            rather than at run granularity, so an interrupted collection does not re-fetch work
+            already paid for at two seconds per video.
+        """
+        ...
+
     def start_run(self, stage: str, params_json: str) -> str:
         """Open a run row and return its id."""
         ...
@@ -143,11 +156,15 @@ class CollectPlan:
         since: Earliest publish date, inclusive.
         limit: Maximum videos kept per channel.
         listing_limit: Maximum uploads listed per channel (bounds pagination).
+        skip_existing: When True, videos already in the database are not re-fetched. This makes a
+            long backfill resumable: re-running after an interruption costs nothing for the work
+            already done.
     """
 
     since: date
     limit: int
     listing_limit: int
+    skip_existing: bool = False
 
 
 @dataclass
@@ -166,6 +183,7 @@ class ChannelReport:
     no_caption: int = 0
     unclassified: int = 0
     skipped: int = 0
+    already_present: int = 0
     errors: list[str] = field(default_factory=list)
     newest: date | None = None
 
@@ -268,6 +286,10 @@ def collect_channel(
         if programme_id is None:
             report.unclassified += 1
 
+        if plan.skip_existing and repo.has_video(upload.video_id):
+            report.already_present += 1
+            continue
+
         try:
             fetched = source.fetch_video(upload.video_id)
         except VideoUnavailableError as exc:
@@ -315,6 +337,7 @@ def collect_channel(
         no_caption=report.no_caption,
         unclassified=report.unclassified,
         skipped=report.skipped,
+        already_present=report.already_present,
     )
     return report
 

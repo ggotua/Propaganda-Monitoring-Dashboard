@@ -13,9 +13,28 @@ and CLI; SPEC-002 gives a working collector — 86 tests, ruff/mypy clean, and a
 the first time.
 
 **What is still missing:** text normalisation and everything downstream of it. No sentences, no
-segments, no topics, no report. The database holds 3 videos out of an expected ~20–33k per year, so
-the backfill has not been run. One environment question remains open: whether the CPU embedding chain
-installs on Python 3.13.1 (D-007), which is *unproven* rather than failed.
+segments, no topics, no report.
+
+### Corpus so far (2026-11-13)
+
+| Quantity | Value |
+|---|---|
+| Videos stored | **245** — Imedi only |
+| Date coverage | 2026-11-04 … 2026-11-12 — **9 of the 43 days in the window** |
+| Caption cues | 87,482 |
+| Caption kind | 245 auto, 0 manual, 0 missing |
+| Raw `json3` files | 245 |
+| Database size | 13.3 MB |
+| Skipped (age-gated) | 26 ≈ 9.7 % of in-window attempts — recoverable only with cookies |
+| Unclassified titles | 243 of 300 listed ≈ **81 %** (worse than the 69 % probe estimate) |
+
+**The corpus is about 3.5× larger than APP-OVERVIEW assumed.** Imedi publishes ~27 videos/day, not
+8–15, so covering the full window needs ~1,300–1,500 listing entries per channel and roughly **13
+hours** of collection for all six. `--listing-limit 300` silently truncated this run to nine days —
+a coverage parameter I had treated as a safety valve.
+
+One environment question remains open: whether the CPU embedding chain installs on Python 3.13.1
+(D-007), which is *unproven* rather than failed.
 
 ### What feasibility established
 
@@ -59,6 +78,7 @@ were taken during implementation.
 | D-011 | Interpreter chain check runs as a spike, not inside SPEC-001's dependency set |
 | D-012 | Tbilisi date is a fixed UTC+4 constant (Windows has no tz database; `tzdata` not worth a dependency) |
 | D-013 | DuckDB 2.0 enforces foreign keys: read-then-write upserts, and a committed cue delete before the parent update |
+| D-014 | Collection is exclusive: no reader can open the database while the collector runs (corrects D-005's "readers never block a writer") |
 
 ## Gate state
 
@@ -109,8 +129,10 @@ These cost hours this session and will cost them again if forgotten:
 1. **SPEC-003 (normaliser)** on a 30-video sample: merge `json3` cues into timestamped sentences,
    strip ASR artefacts, and — the part nothing has measured yet — **assess ASR quality** so the NER
    and attribution risks become evidence rather than a warning.
-2. **Run a real backfill** to 2026-10-01 once SPEC-003 proves the pipeline: `gtaf collect` per
-   channel without `--limit`. Expect ≈69 % `NULL` programmes and report per-channel coverage.
+2. **Extend the backfill, one channel at a time**, with `--listing-limit 1500 --skip-existing`
+   (300 was too small — it covered 9 of 43 days). Expect ~13 h total, so it is an overnight job and
+   must be chunked; collection is exclusive, so nothing else may open the database while it runs
+   (D-014).
 3. **Settle D-007**: install the CPU stack, re-run `spikes/bertopic_chain_check.py`, and record the
    verdict before SPEC-006/007 choose engines.
 4. Delete `spikes/caption_feasibility.py` once `gtaf collect` has replaced it in practice; it is now

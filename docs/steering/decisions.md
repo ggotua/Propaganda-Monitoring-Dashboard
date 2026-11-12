@@ -430,3 +430,33 @@ Consequences: two write paths are more verbose than an upsert, and `upsert_video
 non-atomic window that only a crash can expose. Both are documented at the call site. Revisit if: a
 later DuckDB release makes upserts on referenced parents legal, in which case this can be simplified
 and this entry marked Superseded.
+
+---
+
+## D-014: Collection is exclusive — nothing can read the database while it runs
+
+Status: Accepted (2026-11-13). Measured during the first backfill. **Narrows D-005**, whose
+consequences claimed "readers never block a writer".
+
+Context: D-005 established one writer plus read-only readers, and asserted that a reader would not
+block a writer. The first backfill disproved the second half: opening a read-only connection while
+the collector held the file failed with `IO Error: Cannot open file … because it is being used by
+another process`. DuckDB's lock is exclusive for a read-write process, so "read-only readers" and
+"one writer" cannot overlap — they are sequential, not concurrent.
+
+Decision: collection is a **maintenance window**. While `gtaf collect` runs, no other process may
+open the database — not the workbench, not an ad-hoc query, not a report build. Operationally:
+collection runs when no one is viewing, the workbench is closed first, and a blocked reader reports
+`database is locked` and stops rather than retrying (already implemented).
+
+Rejected:
+- A second database file for readers, refreshed by copy — real complexity, deferred until a measured
+  read-contention problem exists (unchanged from D-005).
+- DuckDB's multi-process read mode — it does not allow a concurrent writer.
+- A lock file plus retry loop — reintroduces the silent-wait failure D-005 rejected.
+
+Consequences: the workbench and a scheduled collection cannot be used at the same time, which for a
+single-analyst desktop tool is acceptable but must be stated in the runbook. A long backfill
+therefore blocks analysis for its whole duration — another reason backfills are chunked per channel.
+Revisit if: a second machine must read the corpus while collection continues, which is the trigger to
+move to a server database or a read replica.

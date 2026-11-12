@@ -100,6 +100,7 @@ class FakeRepo:
         self.channel_ids: list[str] = []
         self.programme_ids: list[str] = []
         self.videos: dict[str, tuple[Video, int]] = {}
+        self.existing: set[str] = set()
         self.runs: dict[str, dict[str, object]] = {}
         self.finished: list[str] = []
 
@@ -114,6 +115,10 @@ class FakeRepo:
     def upsert_video(self, video: Video, cues: Sequence[CaptionCue]) -> None:
         """Record a video upsert with its cue count."""
         self.videos[video.video_id] = (video, len(cues))
+
+    def has_video(self, video_id: str) -> bool:
+        """Report whether the video was already recorded."""
+        return video_id in self.existing or video_id in self.videos
 
     def start_run(self, stage: str, params_json: str) -> str:
         """Open a fake run."""
@@ -329,6 +334,32 @@ def test_watermark_records_newest_date() -> None:
     _run(source, repo, store)
 
     assert repo.runs["run1"]["watermark"] == "2026-10-09"
+
+
+def test_skip_existing_avoids_refetching() -> None:
+    """A resumable backfill must not pay two seconds for work already done."""
+    uploads = [UploadRef("v1", "ქრონიკა"), UploadRef("v2", "ქრონიკა")]
+    source = FakeSource(uploads, {"v2": _fetched("v2")})
+    repo, store = FakeRepo(), FakeStore()
+    repo.existing.add("v1")
+
+    result = _run(source, repo, store, _plan(skip_existing=True))
+
+    assert source.fetched == ["v2"]
+    assert result.reports[0].already_present == 1
+    assert result.reports[0].kept == 1
+
+
+def test_without_skip_existing_everything_is_refetched() -> None:
+    """Default behaviour stays re-fetch-and-converge, which is what fixes drift."""
+    uploads = [UploadRef("v1", "ქრონიკა")]
+    source = FakeSource(uploads, {"v1": _fetched("v1")})
+    repo, store = FakeRepo(), FakeStore()
+    repo.existing.add("v1")
+
+    _run(source, repo, store, _plan(skip_existing=False))
+
+    assert source.fetched == ["v1"]
 
 
 def test_raw_store_never_overwrites(tmp_path: Path) -> None:
