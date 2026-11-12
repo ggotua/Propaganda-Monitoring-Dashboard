@@ -2,16 +2,29 @@
 
 Last updated: 2026-11-12. Branch: `spec-000-kickoff`, tracking `origin`
 (`github.com/ggotua/Propaganda-Monitoring-Dashboard`).
-Sessions: (1) kickoff · (2) architecture decisions · (3) SPEC-001 written · (4) SPEC-001 implemented.
+Sessions: (1) kickoff · (2) architecture decisions · (3) SPEC-001 written · (4) SPEC-001 implemented ·
+(5) feasibility measured.
 
 ## Where the project stands
 
-**The foundation exists and is verified.** SPEC-001 is implemented — package skeleton, corpus
-configuration, DuckDB schema, JSON logging, four CLI commands — with 47 tests passing, ruff and
-`mypy --strict` clean.
+**The foundation exists and is verified, and feasibility is no longer unknown.** SPEC-001 is
+implemented — package skeleton, corpus configuration, DuckDB schema, JSON logging, four CLI commands
+— with 47 tests passing and ruff/mypy clean. The caption probe produced real numbers: 99 videos,
+100 % auto-captioned in Georgian, zero manual captions.
 
-**There is still no data and no collector.** One environment question is also open: whether the
-CPU embedding chain installs on Python 3.13.1 (D-007), which is *unproven* rather than failed.
+**No collector and no data yet.** One environment question remains open: whether the CPU embedding
+chain installs on Python 3.13.1 (D-007), which is *unproven* rather than failed.
+
+### What feasibility established
+
+| Finding | Value | Effect |
+|---|---|---|
+| Caption availability | **99 of 99** sampled videos captioned; 0 gaps in any channel × type cell | No channel is dropped for lack of captions |
+| Caption kind | **100 % automatic, 0 % manual** | Actor dictionary is mandatory; ASR quality unmeasured |
+| Language | Georgian `ka` on all 99 | No translation step needed |
+| Volume sampled | 29.0 h across 13 dates | ~2.2 h/day captioned in the sampled window |
+| Programme attribution | **≈69 % of titles match no programme** | Agenda analysis runs at **channel × date**, not programme level |
+| Durations | 1.4 – 130 min | Segmentation must handle clips, bulletins and one live stream differently |
 
 ## What works today
 
@@ -51,19 +64,19 @@ were taken during implementation.
 | G0 — orient, handles, cadence, older-app path | **Closed** (2026-11-11) |
 | G1 — Analysis Brief | **Approved** |
 | G1 — Architecture | **Decided** — Option B (D-004) |
-| G3 — Feasibility | **Re-scoped** (D-008): SPEC-002's first run must emit the caption table before SPEC-007 or any report |
+| G3 — Feasibility | **Closed (measured 2026-11-12)** — 99/99 captioned, 0 manual; D-008 still requires SPEC-002's full backfill to re-measure across the whole archive |
 | Remote | **Closed** — pushed, verified against the remote |
 | SPEC-001 | **Approved and implemented** — evidence in the spec's Implementation Status |
 | D-007 interpreter chain | **Open, unproven** — `spikes/bertopic_chain_check.py` exits 3 (absent ≠ incompatible) |
 
 ## Waiting on the physical world
 
-1. **A successful YouTube collection run**, from a normal terminal, once the bot check clears.
-   SPEC-002's collector will produce the feasibility table as a by-product (D-008).
-2. **The embedding-chain install**, then re-run `spikes/bertopic_chain_check.py` before
-   SPEC-006/SPEC-007 choose engines.
-3. **A `main` branch / merge point.** Work is on `spec-000-kickoff`; there is no `main` yet, so
-   the first merge will create one.
+1. **The embedding-chain install**, then re-run `spikes/bertopic_chain_check.py` before SPEC-006/
+   SPEC-007 choose engines.
+2. **A `main` branch / merge point.** Work is on `spec-000-kickoff`; there is no `main` yet, so the
+   first merge will create one.
+3. ~~A successful YouTube collection run~~ — **done**: the feasibility probe ran to completion on
+   2026-11-12 (99 rows), so network access to YouTube from this machine works.
 
 ## Environment findings worth keeping
 
@@ -89,10 +102,16 @@ These cost hours this session and will cost them again if forgotten:
 
 ## Next session, in order
 
-1. Write **SPEC-002** (collector) — `[SW]` Structured: channel→video listing with `playlistend`,
-  caption metadata for every video including skipped ones, immutable raw json3, `programme_id`
-  classification validated against real titles, and the feasibility table as output (D-008).
-2. Add the JSON schema validation of `res_*` contract only when the first method spec needs it.
-3. Install the CPU stack and settle D-007 before SPEC-006.
-4. `docs/steering/{tech-stack,conventions,principles}.md` are still unwritten. SPEC-001 forced the
-   facts they need; they can now be written from what is actually true rather than invented.
+1. Write **SPEC-002** (collector), now informed by measurement rather than guesses:
+   - `[SW]` Structured; channel→video listing with `playlistend`, `json3` captions to
+     `data/raw/<channel>/<date>/<video_id>.json3` (immutable), upsert keyed on `video_id`.
+   - Programme matching from `config/programmes.yaml`, expecting **≈69 % `NULL`** — the collector
+     must report per-channel coverage so an empty channel is visible.
+   - Per-video skips (age gate, removed, live chat) must never abort a run; only client-level blocks
+     stop it. This was learned the hard way in the probe.
+   - Exclude non-transcript caption tracks (`live_chat`) from `caption_kind`.
+   - Accept both bulletin-length and clip-length videos, and flag live streams > 2 h.
+2. Then SPEC-003 (normaliser) on a 30-video sample, measuring ASR *quality* — the one thing
+   feasibility did not measure.
+3. `docs/steering/{tech-stack,conventions,principles}.md` are now written from what is true rather
+   than invented.

@@ -116,7 +116,9 @@ def summarise(python_too_old: bool, checks: list[Check]) -> tuple[str, int]:
 
 def run() -> int:
     """Run the chain check, print it, and return the process exit code."""
-    parser = argparse.ArgumentParser(description="Check the CPU embedding chain on this interpreter")
+    parser = argparse.ArgumentParser(
+        description="Check the CPU embedding chain on this interpreter"
+    )
     parser.add_argument("--json", action="store_true", help="emit a single JSON object")
     args = parser.parse_args()
 
@@ -159,7 +161,10 @@ def run() -> int:
         print(f"VERDICT: {n_broken} module(s) installed but failing to import.")
         print("         That is a compatibility failure: fall back to 3.12 per D-007.")
     elif verdict == "inconclusive":
-        print(f"VERDICT: INCONCLUSIVE - {n_missing} of {len(checks)} modules are simply not installed.")
+        print(
+            f"VERDICT: INCONCLUSIVE - {n_missing} of {len(checks)} modules are "
+            f"simply not installed."
+        )
         print("         Absence proves nothing about compatibility. Install the chain, re-run,")
         print("         and only then apply D-007's rule. Do not downgrade the interpreter yet.")
     else:

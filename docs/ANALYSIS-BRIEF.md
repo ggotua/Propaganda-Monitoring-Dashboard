@@ -70,43 +70,50 @@ Explicitly excluded from this analysis — each a deliberate boundary, not an ov
 
 ## 4. Data Description
 
-**UNVERIFIED — this section is empty of numbers on purpose.**
+**MEASURED 2026-11-12** — 99 videos sampled across all six channels; full method, tables and
+caveats in [FEASIBILITY.md](FEASIBILITY.md). Every figure below is a count from
+`data/feasibility/captions.csv`, not an estimate.
 
-Per `KICKOFF.md` Task 4, this section may use only measured facts. The one-off caption probe
-([FEASIBILITY.md](FEASIBILITY.md)) is **blocked**: YouTube returned a bot check ("Sign in to
-confirm you're not a bot") before any caption metadata was read, and the probe stopped rather
-than working around it. Per [D-008](steering/decisions.md), feasibility is therefore no longer
-a spike gate — the collector records `caption_kind`, `caption_lang` and `duration` for every
-video it encounters, and **SPEC-002's first successful run produces this section's table**.
+| Property | Measured value |
+|---|---|
+| Caption availability | **99 of 99 sampled videos captioned** — 0 uncaptioned in any channel × type cell |
+| Caption kind | **100 % automatic, 0 % manual.** No human-authored caption track was offered anywhere |
+| Caption language | Georgian (`ka`) on all 99; no English track observed |
+| Captioned volume | 104,258 s = **29.0 hours** across 99 videos |
+| Duration spread | bulletins median **17.8–37.5 min**; talk 8–11 min; **minimum 1.4 min**, maximum 130 min (live stream) |
+| Date coverage of the sample | 13 distinct dates, 2026-10-01 … 2026-11-12; 90 of 99 in November |
+| Programme attribution from titles | **464 titles matched no configured programme** (≈69 % of those examined) |
+| Channels with a usable programme marker | Imedi (ქრონიკა), Rustavi 2 (კურიერი, შუადღე), GPB (მოამბე, partially) |
+| Channels without one | TV Pirveli (bare headlines), Formula (no in-window classified video) |
+| Blocked videos | 1 age-restricted (Imedi); skipped, not a channel-level block |
 
-Consequently the following are **unknown at the time of writing**, and must not be assumed
-anywhere downstream:
+Three consequences follow directly, and they shape §5 rather than sitting as trivia:
 
-| Property | Value | How it will be established |
-|---|---|---|
-| Videos available per channel per programme type | unknown | SPEC-002 first collection run |
-| Share with manual / auto / no captions | unknown | SPEC-002 first run (`videos.caption_kind`) |
-| Caption language distribution (`ka` vs other) | unknown | SPEC-002 first run (`videos.caption_lang`, D-009) |
-| Hours of captioned broadcast per day | unknown | SPEC-002 first run (duration × availability) |
-| Whether titles allow `news`/`talk` classification without guessing | unknown | SPEC-002 (`unknown` is a recorded outcome) |
-| Whether auto-caption quality is adequate for segmentation | unknown | SPEC-003/004 on a 30-video sample |
+1. **No channel needs to be dropped for lack of captions.** The availability risk that would have
+   justified a scope reduction did not materialise.
+2. **Programme-level comparison is only defensible where a marker exists.** For the other channels
+   `programme_id` is `NULL` by design, so the agenda analysis runs at **channel × date** level. This
+   is a scope boundary, not a defect: a loose pattern would mislabel videos, which is worse than
+   `NULL`.
+3. **Every transcript is ASR output.** With zero manual captions, the actor-dictionary mitigation for
+   NER (APP-OVERVIEW §7 M2) is mandatory rather than optional, and caption *quality* remains
+   unmeasured — availability was this section's question, quality is SPEC-003/004's.
 
-What *is* established as fact, from sources other than the probe:
+Established separately: the six handles resolve to real channels (confirmed by George 2026-11-11);
+captions arrive as `json3` timed text with cue-level start/end times (APP-OVERVIEW §6); Georgian
+model tooling is thin (no usable spaCy Georgian NER), so multilingual sentence embeddings remain the
+assumption for M1.
 
-- The six handles resolve to real channels (`@tvimedi`, `@rustavi2official`, `@postv`,
-  `@georgianbroadcaster`, `@tvformula`, `@tvpirveli1`), confirmed by George on 2026-11-11;
-  two of them were additionally exercised successfully against YouTube's listing endpoint.
-- Captions, when present, are obtainable as `json3` timed text (APP-OVERVIEW §6), which
-  carries cue-level start/end times.
-- Georgian-language model tooling is materially thinner than English (no usable spaCy
-  Georgian NER; see the reuse audit's finding), so multilingual sentence embeddings, not
-  language-specific pipelines, are the working assumption (APP-OVERVIEW §7).
+**A report is still not authorised by this section alone.** Under
+[D-008](steering/decisions.md) SPEC-002's full backfill to 2026-10-01 must re-measure the caption
+rate across the whole archive, because this sample is the *recent* uploads (13 dates, mostly
+November) and an older bulletin could differ. Availability measured on the latest 120 uploads is
+evidence, not proof, about October.
 
-**A report produced from this brief before §4 is populated would be fabricated.** Under
-[D-008](steering/decisions.md) that is enforced mechanically: SPEC-002's first run must emit the
-caption table, and no report — and no scope reduction — may rest on an estimated rate. A channel
-with low caption coverage is kept and caveated, never dropped, because dropping a channel
-silently changes the research question.
+**A channel with low caption coverage would be kept and caveated, never dropped** — dropping one
+silently changes the research question. The measurement above means that rule was not triggered:
+coverage is 100 % in every cell sampled, so the remaining availability question is about the older
+part of the archive, not about any channel.
 
 ---
 
@@ -172,11 +179,12 @@ The analysis is complete for a window when:
 | # | Risk | Why it matters | Mitigation | Status |
 |---|---|---|---|---|
 | R1 | **No speaker labels.** Captions do not say who is speaking. | "The channel said X" cannot be distinguished from "the channel aired someone saying X"; this is the single largest interpretive hazard for a framing claim | Attributed-statement extraction (M4) where the text names a speaker; the limitation is stated in every report; no speaker-attributed claim without an explicit reported clause | Known, unmitigable in v1 |
-| R2 | **Auto-caption noise.** Georgian auto captions mangle names, numerals and homophones. | Hits NER hardest; a wrong name becomes a wrong actor becomes a wrong network edge | Actor dictionary with aliases; prefer manual captions where present; report the manual/auto mix per channel as a quality covariate | Known |
+| R2 | **Auto-caption noise.** Georgian auto captions mangle names, numerals and homophones. | Hits NER hardest; a wrong name becomes a wrong actor becomes a wrong network edge | Actor dictionary with aliases; prefer manual captions where present; report the manual/auto mix per channel as a quality covariate | **Confirmed worst case:** 0 of 99 sampled videos have manual captions, so every transcript is ASR output. Coverage is 100 % but quality is unmeasured |
 | R3 | **LLM-validates-LLM circularity.** A second model agreeing with the first is not independent ground truth; correlated models share blind spots. | Agreement figures would overstate confidence, which is worse than no figure | Cross-*vendor* validation only, never same-model; George spot-checks 30–50 segments per method; agreement reported as a ceiling, with the circularity named in the methodology block | Known, partially mitigable |
 | R4 | **Georgian token cost.** Georgian consumes several times more tokens per word than English. | The ~USD 20/month budget can be exhausted by one careless full-corpus pass | LLM calls restricted to news segmentation and to prevalent-topic segments only (APP-OVERVIEW §8); per-run cost logged in `runs`; prompt caching by hash | Known |
 | R5 | **YouTube IP blocking.** Datacenter IPs are blocked; a residential IP can still be challenged. | Collection stops; a partial window silently biases the agenda comparison | Collector stays on the residential machine; a blocked run fails loudly and logs the exact error (see FEASIBILITY.md for the observed case); collection status is a reported field, not an assumption | **Observed**, not hypothetical |
-| R6 | **Feasibility is unmeasured** (see §4). | Every scoping decision downstream — channel set, programme types, cadence feasibility — rests on an unknown caption rate | Mechanism decided ([D-008](steering/decisions.md)): SPEC-002's first run emits the caption table; a low-coverage channel is caveated, never dropped; no report before that table exists | **Open — number pending, mechanism decided** |
+| R6 | **Programme attribution is unreliable** (measured: ≈69 % of titles match no configured programme). | Programme-level comparison is only defensible on 3 of 6 channels; a naive filter would silently drop two-thirds of the corpus | Analyse at **channel × date**; keep `programme_id = NULL` where no marker exists; SPEC-002 reports per-channel coverage so an empty channel (Formula) is visible rather than silent | **Measured** (§4) |
+| R9 | **Duration heterogeneity.** Videos range 1.4–130 min, mixing full bulletins with short clips and one live stream. | A fixed-window segmenter tuned on 30-minute bulletins will mis-segment 3-minute clips, inflating topic counts for exactly the channels that post most clips | Segment by type: window/ceiling rules for clips vs bulletins; exclude or separately flag live streams > 2 h | **Measured** (§4, FEASIBILITY §3) |
 | R7 | **DuckDB is single-writer.** Collection and the interactive workbench share one file. | A scheduled run during an open workbench session fails, or worse, a partial write goes unnoticed | Resolved by [D-005](steering/decisions.md): Streamlit is read-only, method runs dispatch a subprocess, and the collector treats the lock error as a logged "busy" exit | **Resolved (design)** |
 | R8 | **Python 3.13.1 installed**; BERTopic's chain (UMAP/HDBSCAN) may lag it. | SPEC-001 could stall on an uninstallable dependency | [D-007](steering/decisions.md): two-hour box on 3.13.1, pre-approved fallback to 3.12 if the chain fails | **Decision rule set** |
 
