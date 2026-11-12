@@ -2,89 +2,97 @@
 
 Last updated: 2026-11-12. Branch: `spec-000-kickoff`, tracking `origin`
 (`github.com/ggotua/Propaganda-Monitoring-Dashboard`).
-Sessions: (1) kickoff Tasks 0–6, (2) architecture decisions D-004…D-010, (3) SPEC-001 written.
+Sessions: (1) kickoff · (2) architecture decisions · (3) SPEC-001 written · (4) SPEC-001 implemented.
 
 ## Where the project stands
 
-Documents are settled, the architecture is decided, and the first feature spec exists
-(`SPEC-001`, status `planning`). **There is still no pipeline code and no data.** Two physical
-prerequisites remain: a successful collection run, and a decision on the interpreter chain
-(D-007), which is currently *unproven* rather than failed — see below.
+**The foundation exists and is verified.** SPEC-001 is implemented — package skeleton, corpus
+configuration, DuckDB schema, JSON logging, four CLI commands — with 47 tests passing, ruff and
+`mypy --strict` clean.
 
-## Decisions taken (2026-11-12)
+**There is still no data and no collector.** One environment question is also open: whether the
+CPU embedding chain installs on Python 3.13.1 (D-007), which is *unproven* rather than failed.
 
-Recorded with rejected alternatives and revisit triggers in
-[`docs/steering/decisions.md`](steering/decisions.md). Made by the agent under George's
-explicit delegation ("make decisions as senior software engineer"), noted in each entry.
+## What works today
 
-| ID | Decision | Why it mattered now |
-|---|---|---|
-| D-001 | `[DA]`/`[ML]` → Formal SDD-DA; `[SW]` → Structured SDD-V2 | Two failure modes, two gate sets |
-| D-002 | Build from scratch; reuse only via `REUSE-AUDIT.md` | Older app is a shell; silent copying would import a rejected model |
-| D-003 | Report cadence: every two months, 6/year | Was undefined in APP-OVERVIEW entirely |
-| **D-004** | **Architecture: Option B — layered modular monolith, domain core + adapters.** Adopts immutable-raw + `runs` watermark from Option C; defers its machinery | §7/§8/§11 are interchange requirements; layering is free on greenfield |
-| **D-005** | **One writer.** DuckDB's own file lock; Streamlit `read_only=True`; method runs dispatch a subprocess; collector treats lock errors as logged "busy" | Collection and workbench share one file by design, so collision is normal |
-| **D-006** | **Method contract → `run(segments, ctx)`** — injected context, no ambient state | Old `run(segments, params)` claimed purity while §8 required cost/`llm_calls` writes; the contract was false |
-| **D-007** | **Python: two-hour box on 3.13.1, pre-approved fallback to 3.12** | Turns an open risk into a decision rule with a committed trigger |
-| **D-008** | **Feasibility moves from spike-gate to collector output.** Low-coverage channel is caveated, never dropped | The spike duplicated what SPEC-002 must record anyway; G3 re-scoped |
-| **D-009** | Schema: `videos.caption_lang`, `videos.broadcast_date_local`, `schema_meta.schema_version`, `method_version` on results; all instants UTC | Locks these before SPEC-001 DDL |
-| D-010 | Benchmark picks the primary LLM; **validator is always a different vendor**; gateway refuses over-budget runs | R3 circularity and budget are not benchmark questions |
+```
+gtaf init-db <path>        creates the schema, idempotent, version-gated
+gtaf schema-version <path> prints the stored schema version
+gtaf check-config          validates channels.yaml + programmes.yaml, all violations at once
+gtaf doctor                interpreter, duckdb, pydantic, yaml, write probe
+python -m gtaf …           same, without the console script
+```
 
-`APP-OVERVIEW.md` is now v0.2 and reflects D-003/004/005/006/007/009 inline.
+## Decisions recorded
+
+All in [`docs/steering/decisions.md`](steering/decisions.md), each with rejected alternatives and
+a revisit trigger. D-001…D-010 were taken on 2026-11-12 under George's delegation; D-011 and D-012
+were taken during implementation.
+
+| ID | Decision |
+|---|---|
+| D-001 | `[DA]`/`[ML]` → Formal SDD-DA; `[SW]` → Structured SDD-V2 |
+| D-002 | Build from scratch; reuse only via `REUSE-AUDIT.md` |
+| D-003 | Reports every two months, 6/year |
+| D-004 | Architecture: layered modular monolith, domain core + adapters |
+| D-005 | One writer; read-only readers; lock error fails loudly, never retried |
+| D-006 | Method contract is `run(segments, ctx)` — injected context, no ambient state |
+| D-007 | Python 3.13.1 first, pre-approved fallback to 3.12 |
+| D-008 | Feasibility is collector output, not a spike gate; low-coverage channel caveated, never dropped |
+| D-009 | `caption_lang`, `broadcast_date_local`, `schema_meta.schema_version`, `method_version`; UTC instants |
+| D-010 | Benchmark picks primary LLM; validator always a different vendor; gateway refuses over-budget runs |
+| D-011 | Interpreter chain check runs as a spike, not inside SPEC-001's dependency set |
+| D-012 | Tbilisi date is a fixed UTC+4 constant (Windows has no tz database; `tzdata` not worth a dependency) |
 
 ## Gate state
 
 | Gate | Status |
 |---|---|
 | G0 — orient, handles, cadence, older-app path | **Closed** (2026-11-11) |
-| G1 — Analysis Brief | **Approved** — [`ANALYSIS-BRIEF.status`](ANALYSIS-BRIEF.status) says `approved` |
+| G1 — Analysis Brief | **Approved** |
 | G1 — Architecture | **Decided** — Option B (D-004) |
 | G3 — Feasibility | **Re-scoped** (D-008): SPEC-002's first run must emit the caption table before SPEC-007 or any report |
-| Remote | **Closed** — pushed to `origin`, verified against the remote |
-| D-007 interpreter chain | **Open, unproven** — `spikes/bertopic_chain_check.py` exits 3 (inconclusive): all eight modules are simply absent, which proves nothing about compatibility |
+| Remote | **Closed** — pushed, verified against the remote |
+| SPEC-001 | **Approved and implemented** — evidence in the spec's Implementation Status |
+| D-007 interpreter chain | **Open, unproven** — `spikes/bertopic_chain_check.py` exits 3 (absent ≠ incompatible) |
 
-## Waiting on the physical world (not on judgement)
+## Waiting on the physical world
 
-1. **A git remote.** Give me a URL and I will add `origin`, push `spec-000-kickoff`, and verify
-   with a remote check.
-2. **A successful collection run**, from a normal terminal, once YouTube's bot check clears:
-   `.venv\Scripts\python.exe spikes\caption_feasibility.py` (optional now — the collector does
-   this permanently), or straight to SPEC-002's collector.
-3. **George's spot-check of §2–§3 of the brief** — approved by delegation, but if the core
-   question or the non-goals are not what you meant, that is the cheapest thing to change and
-   it invalidates everything downstream.
+1. **A successful YouTube collection run**, from a normal terminal, once the bot check clears.
+   SPEC-002's collector will produce the feasibility table as a by-product (D-008).
+2. **The embedding-chain install**, then re-run `spikes/bertopic_chain_check.py` before
+   SPEC-006/SPEC-007 choose engines.
+3. **A `main` branch / merge point.** Work is on `spec-000-kickoff`; there is no `main` yet, so
+   the first merge will create one.
 
 ## Environment findings worth keeping
 
-These cost real hours and will cost them again if forgotten:
+These cost hours this session and will cost them again if forgotten:
 
-- **Python 3.13.1**, no app stack installed (`pandas`, `duckdb`, `streamlit`, `plotly` all
-  absent); `ruff` and `mypy` present.
-- **`python -m venv` fails here** — `ensurepip` dies in temp-directory cleanup
-  (`PermissionError: [WinError 5]`). Use `--without-pip`, then
-  `python -m pip --python .venv\Scripts\python.exe install …`.
-- **pip's networking hangs** (spins at ~100 % CPU, emits nothing). Working substitute: fetch the
-  wheel with `Invoke-WebRequest`, install with `--no-index --no-deps`. A wheel saved under a
-  non-canonical filename is rejected ("not a valid wheel filename").
-- **The agent's sandboxed shell cannot complete HTTPS** — TCP connects, TLS dies for every host,
-  while the harness's own fetcher works. Network steps need the unconfined path, one approval each.
-- **yt-dlp needs `playlistend`** when listing a channel or it paginates the entire upload history
-  (it reached page 293 here, which is very likely what triggered YouTube's bot check).
-- **The embedding chain is uninstalled, and its installability is untested** (D-011). The check
-  script deliberately exits 3 rather than 1 in that state: "not installed" must never be read as
-  "incompatible", which is exactly the conclusion a first version of it wrongly printed.
-- Workspace folder permissions were repaired once (missing `WRITE_OWNER`); undo script and
-  report are in `D:\Data analysis\acl-repair-20261111\`.
+- **`uv` is installed and works instantly (7 s), while pip's own networking hangs** (spins at
+  ~100 % CPU, emits nothing, even unconfined). Use `uv pip install --python .venv\Scripts\python.exe`.
+  If a wheel must be fetched by hand, `Invoke-WebRequest` works, pip `--no-index` installs it.
+- **`python -m venv` fails here** (`ensurepip` dies cleaning a sandbox temp dir). Use
+  `--without-pip`, then `uv pip install`.
+- **The sandboxed shell cannot complete HTTPS** — TCP connects, TLS dies for every host, while
+  the harness's own fetcher works. Network steps (git push, installs) need the unconfined path,
+  one approval each.
+- **pytest needs help in this sandbox.** The workspace root denies `DeleteSubdirectoriesAndFiles`,
+  so pytest cannot manage its own temp dirs; pass `--basetemp=.tmp\pytest` and recreate `.tmp`
+  when it is poisoned, or run the suite unconfined. 47 tests pass this way.
+- **Python 3.13.1 has no tz database on Windows**; `zoneinfo("Asia/Tbilisi")` needs `tzdata`.
+  D-012 avoids it with a fixed UTC+4 constant.
+- **yt-dlp needs `playlistend`** when listing a channel or it paginates the whole upload history
+  (it reached page 293, very likely triggering YouTube's bot check).
+- Workspace permissions were repaired once (missing `WRITE_OWNER`); undo script and report in
+  `D:\Data analysis\acl-repair-20261111\`.
 
 ## Next session, in order
 
-1. Review **`docs/specs/SPEC-001-foundation.md`** and flip `SPEC-001.status` to `approved` (or
-   edit it first). It is written but deliberately **not** set to `approved`, so no code exists
-   against an unreviewed schema.
-2. Implement SPEC-001: `src/gtaf/` per §2, `config/*.yaml`, `001_init.sql`, JSON logging, the
-   four CLI commands, and the tests in §9 — `ruff` + `mypy --strict` clean.
-3. Run the D-011 chain check **after** installing the CPU stack; only then does D-007's rule
-   apply. Until then the interpreter stays 3.13.1.
-4. Then SPEC-002 (collector), whose first run produces the feasibility table (D-008).
-5. Keep `docs/steering/tech-stack.md`, `conventions.md`, `principles.md` unwritten until
-   SPEC-001 forces their content — inventing them first would be fiction.
+1. Write **SPEC-002** (collector) — `[SW]` Structured: channel→video listing with `playlistend`,
+  caption metadata for every video including skipped ones, immutable raw json3, `programme_id`
+  classification validated against real titles, and the feasibility table as output (D-008).
+2. Add the JSON schema validation of `res_*` contract only when the first method spec needs it.
+3. Install the CPU stack and settle D-007 before SPEC-006.
+4. `docs/steering/{tech-stack,conventions,principles}.md` are still unwritten. SPEC-001 forced the
+   facts they need; they can now be written from what is actually true rather than invented.

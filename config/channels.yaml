@@ -1,0 +1,46 @@
+# Corpus definition — the six channels in scope (APP-OVERVIEW §4).
+#
+# Handles confirmed by George on 2026-11-11.
+#
+# There is deliberately no `youtube_channel_id` (UC…) field here. Those identifiers were seen
+# only on third-party aggregator sites during research, i.e. unverified, and committing them
+# would launder an unverified claim into the schema. The collector resolves the UC id from the
+# handle and stores it in channels.youtube_channel_id (SPEC-002).
+schema_version: 1
+
+channels:
+  - channel_id: imedi
+    name_en: Imedi
+    name_ka: იმედი
+    youtube_handle: "@tvimedi"
+    active: true
+
+  - channel_id: rustavi2
+    name_en: Rustavi 2
+    name_ka: რუსთავი 2
+    youtube_handle: "@rustavi2official"
+    active: true
+
+  - channel_id: postv
+    name_en: POSTV
+    name_ka: POSTV
+    youtube_handle: "@postv"
+    active: true
+
+  - channel_id: gpb
+    name_en: GPB (First Channel)
+    name_ka: პირველი არხი
+    youtube_handle: "@georgianbroadcaster"
+    active: true
+
+  - channel_id: formula
+    name_en: Formula
+    name_ka: ფორმულა
+    youtube_handle: "@tvformula"
+    active: true
+
+  - channel_id: pirveli
+    name_en: TV Pirveli
+    name_ka: ტვ პირველი
+    youtube_handle: "@tvpirveli1"
+    active: true

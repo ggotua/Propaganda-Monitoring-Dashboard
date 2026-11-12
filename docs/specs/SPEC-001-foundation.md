@@ -522,4 +522,96 @@ Expected volume: 6 channels × ~8 captioned videos/day ≈ 17.5k videos/year; ~1
 
 ## Implementation Status
 
-STATUS: NOT STARTED — spec awaiting `.status` = `approved`.
+STATUS: COMPLETE
+Implemented: 2026-11-12
+Approved: 2026-11-12 (George)
+
+### Files created
+
+| Path | Purpose |
+|---|---|
+| `pyproject.toml` | packaging, ruff/mypy/pytest config, dependency declarations |
+| `requirements.lock` | pinned dependency set |
+| `config/channels.yaml`, `config/programmes.yaml` | the six channels, 12 pattern families |
+| `src/gtaf/__init__.py`, `__main__.py`, `cli.py` | package entry points, four subcommands |
+| `src/gtaf/domain/{models,invariants,method}.py` | entities, INV predicates, method contract |
+| `src/gtaf/application/{config,initialize}.py` | config rules, DB initialisation |
+| `src/gtaf/infrastructure/{config_io,db,logging_setup}.py` | YAML+pydantic, DuckDB gate, JSON logs |
+| `src/gtaf/infrastructure/migrations/001_init.sql` | the ten tables |
+| `tests/{conftest,test_config,test_schema,test_migrations,test_cli}.py` | 47 tests |
+
+### Verification with evidence
+
+```
+Claim:     Lint clean on source and tests
+Command:   .venv\Scripts\python.exe -m ruff check src/ tests/
+Exit code: 0
+Summary:   All checks passed! (260+ rules incl. BLE for blind excepts)
+Verdict:   PASS
+
+Claim:     Strict type check clean
+Command:   .venv\Scripts\python.exe -m mypy
+Exit code: 0
+Summary:   Success: no issues found in 15 source files (strict=true)
+Verdict:   PASS
+
+Claim:     All acceptance-criteria tests pass
+Command:   .venv\Scripts\python.exe -m pytest -q
+Exit code: 0
+Summary:   47 passed
+Verdict:   PASS
+
+Claim:     Fresh database is created and reports its version
+Command:   .venv\Scripts\python.exe -m gtaf init-db .tmp\evidence.duckdb
+Exit code: 0
+Summary:   created .tmp\evidence.duckdb (schema_version=1); second run: "nothing to do"
+Verdict:   PASS
+
+Claim:     Committed configuration validates
+Command:   .venv\Scripts\python.exe -m gtaf check-config
+Exit code: 0
+Summary:   configuration OK: 6 channels, 12 programmes
+Verdict:   PASS
+
+Claim:     Log records are single-line JSON
+Command:   Get-Content logs\app.jsonl -Last 1
+Exit code: 0
+Summary:   {"ts": "...", "level": "info", "event": "db.opened", "schema_version": "1"}
+Verdict:   PASS
+```
+
+### Deviations from the original spec
+
+1. **`__main__.py` added** (not in §2's tree). Without it `python -m gtaf` fails; the spec
+   assumed only the console script.
+2. **Tbilisi date uses a fixed UTC+4 offset** rather than `zoneinfo`/`Asia/Tbilisi`, because
+   Windows needs the `tzdata` package for the latter and D-012 declines a new dependency for
+   zero accuracy across this corpus's date range. Boundary tests pin the behaviour.
+3. **`doctor`'s write probe targets `data/`, not the OS temp directory** (`--data-dir` to
+   override). A machine can have a writable temp dir and an unwritable data dir; only the second
+   prevents the pipeline from running.
+4. **The migration runner drops full-line `--` comments before splitting.** The first run failed
+   with `ParserException: unterminated quoted identifier` because the file's own header comment
+   contained a quoted semicolon. Fixed, with a regression test. Migration files therefore do not
+   support trailing comments on a statement line.
+5. **`config/programmes.yaml` entries are provisional pattern families, not verified shows.**
+   The feasibility probe never produced data, so no programme identity has been confirmed against
+   real titles. SPEC-002 must validate them and delete entries that match nothing; unmatched
+   videos become `programme_id = NULL` by design.
+6. **`BLE` added to the ruff rule set** so blind `except` blocks are flagged unless explicitly
+   annotated, rather than leaving the annotations inert.
+7. No `types-PyYAML` dependency was retained, despite being needed for a moment: Boundaries
+   requires asking first, so a mypy override for the `yaml` module was used instead.
+
+### Lessons learned
+
+- The migration-splitting bug is the kind that only appears when a comment is written carelessly;
+  the regression test now locks it. A real SQL parser would have been a dependency for one file.
+- Deleting and recreating `logs/` at test time is unnecessary — `setup_logging` creates it.
+- pytest's `tmp_path` is unusable in this session's sandbox (the workspace root denies
+  `DeleteSubdirectoriesAndFiles`), so tests need `--basetemp` inside the workspace or an
+  unconfined shell. Recorded in `docs/STATUS.md`; it is an environment limitation, not a defect.
+
+### Next
+
+SPEC-002 (collector), whose first successful run produces the feasibility table (D-008).

@@ -364,3 +364,31 @@ Consequences: the interpreter decision is made by a disposable spike rather than
 `gtaf doctor` only verifies the light stack. Revisit if: the spike shows the chain works on
 3.13.1, in which case no further action is needed and this entry is simply the record of where
 the check lives.
+
+---
+
+## D-012: Tbilisi local date is a fixed UTC+4 offset, not `Asia/Tbilisi` via `zoneinfo`
+
+Status: Accepted (2026-11-12). Agent decision under the same delegation. **Implements D-009's
+intent with a different mechanism**; D-009's schema requirement (a local `DATE` column derived at
+ingest) is unchanged.
+
+Context: implementing D-009 surfaced a Windows-specific fact. Python's `zoneinfo` has no system
+time-zone database on Windows, so resolving `Asia/Tbilisi` requires the `tzdata` package — a new
+third-party dependency, which SPEC-001's Boundaries section says must be asked for first. Georgia
+has observed a fixed UTC+4 with no daylight saving since 2005, and this corpus starts 2026-10-01,
+so the tz database would contribute nothing but a dependency.
+
+Decision: `TBILISI_OFFSET = timezone(timedelta(hours=4), "Asia/Tbilisi")` in
+`domain/invariants.py`, used by the single `local_date_of` function. Boundaries are asserted by
+tests: `2026-10-31T21:30Z → 2026-11-01`, `19:30Z → 2026-10-31`, and `20:00Z` exactly at midnight.
+
+Rejected:
+- Add `tzdata` — a dependency bought for zero accuracy across this corpus's date range.
+- Pass a fixed offset at each call site — duplicates the rule D-009 exists to centralise.
+- Store UTC only and convert in queries — the failure mode D-009 was written to prevent.
+
+Consequences: correct for every date this project will handle, and wrong in principle for any
+historical date before 2005 or a future DST reintroduction. Both are one constant away, and the
+constant carries a comment saying so. Revisit if: the corpus acquires pre-2005 material, or
+Georgia changes its offset.

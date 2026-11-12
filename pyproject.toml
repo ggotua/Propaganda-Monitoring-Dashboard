@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gtaf"
+version = "0.1.0"
+description = "Georgian TV Agenda & Framing — collection and analysis pipeline"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=2.0,<3",
+    "pydantic>=2.5,<3",
+    "pyyaml>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9",
+    "ruff>=0.17",
+    "mypy>=2.4",
+]
+
+[project.scripts]
+gtaf = "gtaf.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gtaf"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "FURB", "RUF", "BLE"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src"]
+warn_unreachable = true
+
+# PyYAML ships no annotations. Rather than add a stub package to the dependency set (which
+# SPEC-001 §11 requires asking first), this override narrows the waiver to the one module that
+# needs it. `yaml.safe_load` returns Any either way, so the stub would add little.
+[[tool.mypy.overrides]]
+module = "yaml"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"

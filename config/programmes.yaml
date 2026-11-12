@@ -1,0 +1,112 @@
+# Programme definitions — pattern families, not verified programme identities.
+#
+# IMPORTANT: these entries are HYPOTHESES about how each channel titles its bulletins and talk
+# output. They have not been validated against real titles, because the feasibility probe never
+# produced data (docs/FEASIBILITY.md). SPEC-002 must validate them against real listings and
+# correct or delete entries that match nothing.
+#
+# Consequence, by design: a video matching no pattern is stored with programme_id = NULL and
+# counted as unclassified. An empty guess is worse than a NULL, and the unclassified share is
+# itself a number the agenda analysis must report.
+#
+# `type` is one of news | talk | interview.
+schema_version: 1
+
+programmes:
+  # ---- evening news -------------------------------------------------------------------
+  - programme_id: imedi_news
+    channel_id: imedi
+    name_en: News (pattern family)
+    name_ka: ამბები
+    type: news
+    title_patterns: ["ამბები", "სიახლე", "news"]
+    playlist_ids: []
+
+  - programme_id: rustavi2_news
+    channel_id: rustavi2
+    name_en: News (pattern family)
+    name_ka: ამბები
+    type: news
+    title_patterns: ["ამბები", "სიახლე", "news"]
+    playlist_ids: []
+
+  - programme_id: postv_news
+    channel_id: postv
+    name_en: News (pattern family)
+    name_ka: ამბები
+    type: news
+    title_patterns: ["ამბები", "სიახლე", "news"]
+    playlist_ids: []
+
+  - programme_id: gpb_news
+    channel_id: gpb
+    name_en: News (pattern family)
+    name_ka: ამბები
+    type: news
+    title_patterns: ["ამბები", "სიახლე", "news"]
+    playlist_ids: []
+
+  - programme_id: formula_news
+    channel_id: formula
+    name_en: News (pattern family)
+    name_ka: ამბები
+    type: news
+    title_patterns: ["ამბები", "სიახლე", "news"]
+    playlist_ids: []
+
+  - programme_id: pirveli_news
+    channel_id: pirveli
+    name_en: News (pattern family)
+    name_ka: ამბები
+    type: news
+    title_patterns: ["ამბები", "სიახლე", "news"]
+    playlist_ids: []
+
+  # ---- talk / interview ---------------------------------------------------------------
+  - programme_id: imedi_talk
+    channel_id: imedi
+    name_en: Talk/interview (pattern family)
+    name_ka: ინტერვიუ
+    type: talk
+    title_patterns: ["ტოქ-შოუ", "ინტერვიუ", "პირისპირ", "talk show", "interview"]
+    playlist_ids: []
+
+  - programme_id: rustavi2_talk
+    channel_id: rustavi2
+    name_en: Talk/interview (pattern family)
+    name_ka: ინტერვიუ
+    type: talk
+    title_patterns: ["ტოქ-შოუ", "ინტერვიუ", "პირისპირ", "talk show", "interview"]
+    playlist_ids: []
+
+  - programme_id: postv_talk
+    channel_id: postv
+    name_en: Talk/interview (pattern family)
+    name_ka: ინტერვიუ
+    type: talk
+    title_patterns: ["ტოქ-შოუ", "ინტერვიუ", "პირისპირ", "talk show", "interview"]
+    playlist_ids: []
+
+  - programme_id: gpb_talk
+    channel_id: gpb
+    name_en: Talk/interview (pattern family)
+    name_ka: ინტერვიუ
+    type: talk
+    title_patterns: ["ტოქ-შოუ", "ინტერვიუ", "პირისპირ", "talk show", "interview"]
+    playlist_ids: []
+
+  - programme_id: formula_talk
+    channel_id: formula
+    name_en: Talk/interview (pattern family)
+    name_ka: ინტერვიუ
+    type: talk
+    title_patterns: ["ტოქ-შოუ", "ინტერვიუ", "პირისპირ", "talk show", "interview"]
+    playlist_ids: []
+
+  - programme_id: pirveli_talk
+    channel_id: pirveli
+    name_en: Talk/interview (pattern family)
+    name_ka: ინტერვიუ
+    type: talk
+    title_patterns: ["ტოქ-შოუ", "ინტერვიუ", "პირისპირ", "talk show", "interview"]
+    playlist_ids: []
