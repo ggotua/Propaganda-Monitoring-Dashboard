@@ -335,3 +335,32 @@ Rejected:
 Consequences: SPEC-005 must report cost per 1,000 Georgian tokens as a first-class result, not
 an afterthought. Revisit if: a vendor publishes a Georgian-specific model whose validation
 independence is credible, or the budget changes by an order of magnitude.
+
+---
+
+## D-011: The interpreter gate runs as a spike, not inside SPEC-001's dependency set
+
+Status: Accepted (2026-11-12). Agent decision under the same delegation. **Amends the placement
+of D-007**; D-007's trigger and fallback are unchanged.
+
+Context: D-007 said "SPEC-001 first attempts the full chain". Writing SPEC-001 made the cost of
+that placement visible: the chain is BERTopic → UMAP → numba → llvmlite → HDBSCAN →
+sentence-transformers, i.e. a CPU embedding stack. Installing all of it to validate a DuckDB
+schema would make the foundation spec's dependency set roughly five times larger, and a failed
+install there would block work that has no exposure to embeddings at all.
+
+Decision: the chain check moves to `spikes/bertopic_chain_check.py`, run once under the same
+two-hour box, and its outcome is recorded in `docs/STATUS.md`. It must still complete **before
+SPEC-007** (topics) and before SPEC-006 (segmentation) choose their engines. SPEC-001's own
+dependencies are `duckdb`, `pydantic`, `pyyaml` only.
+
+Rejected:
+- Keeping it in SPEC-001 as originally worded — couples a heavy, unrelated dependency decision
+  to the foundation, and turns a greenfield schema into a hostage of numba's release schedule.
+- Deferring it to SPEC-007 outright — too late: SPEC-006's segmentation design depends on
+  whether embeddings are available on this interpreter at all.
+
+Consequences: the interpreter decision is made by a disposable spike rather than by the spec, and
+`gtaf doctor` only verifies the light stack. Revisit if: the spike shows the chain works on
+3.13.1, in which case no further action is needed and this entry is simply the record of where
+the check lives.

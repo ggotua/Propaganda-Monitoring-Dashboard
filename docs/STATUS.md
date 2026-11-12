@@ -1,14 +1,15 @@
 # STATUS — GTAF
 
-Last updated: 2026-11-12. Branch: `spec-000-kickoff` (commits local; **no remote yet**).
-Sessions: (1) kickoff Tasks 0–6, (2) senior architecture decisions D-004…D-010.
+Last updated: 2026-11-12. Branch: `spec-000-kickoff`, tracking `origin`
+(`github.com/ggotua/Propaganda-Monitoring-Dashboard`).
+Sessions: (1) kickoff Tasks 0–6, (2) architecture decisions D-004…D-010, (3) SPEC-001 written.
 
 ## Where the project stands
 
-Documents are settled and the architecture is decided; **no pipeline code exists and no data
-has been collected.** Every gate that could be closed by reasoning has been closed. Three
-things now await the physical world: a git remote, a working network path to YouTube, and the
-first collection run.
+Documents are settled, the architecture is decided, and the first feature spec exists
+(`SPEC-001`, status `planning`). **There is still no pipeline code and no data.** Two physical
+prerequisites remain: a successful collection run, and a decision on the interpreter chain
+(D-007), which is currently *unproven* rather than failed — see below.
 
 ## Decisions taken (2026-11-12)
 
@@ -39,7 +40,8 @@ explicit delegation ("make decisions as senior software engineer"), noted in eac
 | G1 — Analysis Brief | **Approved** — [`ANALYSIS-BRIEF.status`](ANALYSIS-BRIEF.status) says `approved` |
 | G1 — Architecture | **Decided** — Option B (D-004) |
 | G3 — Feasibility | **Re-scoped** (D-008): SPEC-002's first run must emit the caption table before SPEC-007 or any report |
-| Remote | **Open** — needs a repository URL |
+| Remote | **Closed** — pushed to `origin`, verified against the remote |
+| D-007 interpreter chain | **Open, unproven** — `spikes/bertopic_chain_check.py` exits 3 (inconclusive): all eight modules are simply absent, which proves nothing about compatibility |
 
 ## Waiting on the physical world (not on judgement)
 
@@ -68,15 +70,21 @@ These cost real hours and will cost them again if forgotten:
   while the harness's own fetcher works. Network steps need the unconfined path, one approval each.
 - **yt-dlp needs `playlistend`** when listing a channel or it paginates the entire upload history
   (it reached page 293 here, which is very likely what triggered YouTube's bot check).
+- **The embedding chain is uninstalled, and its installability is untested** (D-011). The check
+  script deliberately exits 3 rather than 1 in that state: "not installed" must never be read as
+  "incompatible", which is exactly the conclusion a first version of it wrongly printed.
 - Workspace folder permissions were repaired once (missing `WRITE_OWNER`); undo script and
   report are in `D:\Data analysis\acl-repair-20261111\`.
 
 ## Next session, in order
 
-1. Write **SPEC-001** against the decided architecture: package skeleton (`domain/`,
-   `application/`, `infrastructure/`, `presentation/`), `channels.yaml` + `programmes.yaml`,
-   the DuckDB DDL including D-009's four additions, logging, and the D-007 interpreter gate.
-   Generate `SPEC-001.status` = `planning`; do not implement until it says `approved`.
-2. Then SPEC-002 (collector), whose first run produces the feasibility table.
-3. Keep `docs/steering/tech-stack.md`, `conventions.md`, `principles.md` unwritten until SPEC-001
-   forces their content — they are currently absent, and inventing them first would be fiction.
+1. Review **`docs/specs/SPEC-001-foundation.md`** and flip `SPEC-001.status` to `approved` (or
+   edit it first). It is written but deliberately **not** set to `approved`, so no code exists
+   against an unreviewed schema.
+2. Implement SPEC-001: `src/gtaf/` per §2, `config/*.yaml`, `001_init.sql`, JSON logging, the
+   four CLI commands, and the tests in §9 — `ruff` + `mypy --strict` clean.
+3. Run the D-011 chain check **after** installing the CPU stack; only then does D-007's rule
+   apply. Until then the interpreter stays 3.13.1.
+4. Then SPEC-002 (collector), whose first run produces the feasibility table (D-008).
+5. Keep `docs/steering/tech-stack.md`, `conventions.md`, `principles.md` unwritten until
+   SPEC-001 forces their content — inventing them first would be fiction.
