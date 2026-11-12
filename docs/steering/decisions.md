@@ -102,3 +102,236 @@ bulletins. Monthly aggregation stays available in the workbench as an analytical
 but is not a scheduled deliverable, so no monthly export path needs building.
 Revisit if: the audience asks for a monthly cycle, or the first two reports show that
 two-month windows are too coarse to see a frame shift that matters.
+
+---
+
+## D-004: Architecture — layered modular monolith with a domain core and adapters
+
+Status: Accepted (2026-11-12). Decided by the agent under George's explicit delegation of
+2026-11-12 ("make decisions as senior software engineer"), recorded here rather than left
+implicit.
+
+Context: `APP-OVERVIEW.md` §7 requires methods to be pluggable behind one contract, §8
+requires swapping LLM providers after a benchmark, and §5/§11 require the collector to run
+on a different machine from analysis. `REUSE-AUDIT.md` establishes greenfield: there is no
+legacy structure to preserve, so layering costs nothing in fidelity to existing code.
+
+Decision: **ARCH-OPTIONS Option B.** One Python package in four layers: `domain/` (segments,
+methods, run contract — no I/O, importable in a bare REPL), `application/` (use cases),
+`infrastructure/` (yt-dlp, DuckDB repository, LLM gateway, Quarto), `presentation/`
+(Streamlit). Dependencies point inward.
+
+Two cheap invariants are adopted from Option C immediately, without its machinery: raw
+caption files are **immutable once written**, and `runs` holds a **per-stage watermark**, so
+a later move to incremental processing is a query change rather than a redesign.
+
+Rejected:
+- Option A (batch pipes-and-filters) — cannot express provider interchange or the
+  collector/analysis split as an enforceable boundary, and leaves the single-writer
+  collision between scheduler and workbench unmanaged.
+- Option C now (incremental framework) — spends the design budget on watermarks before
+  anything has measured that a full rebuild is expensive. Its one genuinely valuable
+  property is captured above as an invariant, at near-zero cost.
+- Waiting for the benchmark/probe to inform the choice — neither input discriminates
+  between these options; both are agnostic to layering.
+
+Consequences: roughly one to two extra sessions of wiring across SPEC-001 and SPEC-005, and
+the layer boundary must actually be checked in Stage 5 (a grep for framework imports in
+`domain/`), or this decays into Option A with more folders. Revisit if: the six methods are
+final and the provider has not changed for six months (the adapters were then overhead), or
+a measured full rebuild exceeds 30 minutes — the pre-agreed trigger to adopt Option C's
+real machinery.
+
+---
+
+## D-005: Exactly one writer; readers are read-only; no lock-file dependency
+
+Status: Accepted (2026-11-12). Agent decision under the same delegation.
+
+Context: DuckDB permits one read-write process per file. `APP-OVERVIEW.md` §4 promises a
+daily scheduled collection *and* an interactive workbench over the same file, so the
+collision is a normal operating condition, not an edge case — and a silent one if unhandled.
+
+Decision: DuckDB's own file lock is the mutual-exclusion mechanism; no advisory lock library
+is added. Three rules follow from it:
+1. The Streamlit workbench opens the database with `read_only=True` and never writes.
+2. "Run or refresh a method" in the workbench (§9) dispatches a **subprocess**
+   (`python -m gtaf.cli run-method …`) and polls `runs`; the Streamlit process itself never
+   holds a write connection.
+3. The scheduled collector treats a DuckDB lock error as a **normal, logged "workbench
+   busy" outcome**: it exits non-zero with a clear message, retries nothing, and leaves the
+   window marked incomplete in `runs`.
+
+Rejected:
+- An advisory lock file around every write — reimplements a guarantee DuckDB already
+  provides, and introduces a second truth about who owns the file.
+- Optimistic retry loops on the lock — turns a legible failure into an intermittent one.
+- A separate analytics database refreshed by copy — real complexity, deferred until a
+  measured read-contention problem exists.
+
+Consequences: collection cannot run while the workbench has the file open for writing — which
+it never does, by rule 1 — and a method refresh shows a progress state rather than blocking
+the UI. Revisit if: read-only Streamlit concurrency becomes insufficient (e.g. multi-user
+hosting), or a second machine must read the same file (that is a move to a server DB, not a
+patch).
+
+---
+
+## D-006: Method contract takes an injected context, not ambient side effects
+
+Status: Accepted (2026-11-12). Agent decision under the same delegation. **Supersedes §7's
+`run(segments, params)` signature** in `APP-OVERVIEW.md`.
+
+Context: `APP-OVERVIEW.md` §7 declares every method `run(segments, params) -> DataFrame` and
+calls it pure, while §8 requires every method's LLM calls to be cached, costed and logged in
+`llm_calls`. A function cannot both be free of effects and write a cost row. As written, the
+contract is false, and the cheapest way to satisfy it silently is a module-level global
+client — which destroys testability and reproducibility at once.
+
+Decision: the contract becomes `run(segments, ctx)` where `ctx` is an explicit, passed-in
+context exposing `ctx.llm(prompt, …)`, `ctx.cache`, and `ctx.meter`. A method receives no
+database handle, reads no environment variable, and defines no module-level client. "Pure"
+is redefined as **no ambient state**: given the same segments and a context returning the
+same responses, the method yields the same output. Tests pass a `FakeCtx` that records
+prompts and returns fixtures.
+
+Rejected:
+- Keep `run(segments, params)` and let the gateway be global — makes methods untestable
+  offline and hides cost attribution.
+- Have the runner diff outputs to log cost — cannot attribute cost per segment.
+- Return `(DataFrame, call_log)` — forces every method to thread bookkeeping it may not use,
+  and makes non-LLM methods carry LLM-shaped signatures.
+
+Consequences: `run(segments, params)` in APP-OVERVIEW §7 is amended; the registry entry is
+unchanged and non-LLM methods simply ignore `ctx`. Revisit if: a method genuinely needs
+multi-turn interaction with a tool other than the LLM (then `ctx` grows a narrow interface,
+not a general one).
+
+---
+
+## D-007: Python 3.13.1 first, with a pre-approved fallback to 3.12
+
+Status: Accepted (2026-11-12). Agent decision under the same delegation.
+
+Context: the installed interpreter is Python 3.13.1 and the project has no stack installed.
+`APP-OVERVIEW.md` §11 already flags that BERTopic's chain (UMAP → numba → llvmlite, HDBSCAN)
+may lag a new interpreter. Choosing an interpreter badly is cheap to avoid now and expensive
+to unwind after the schema and CLI exist.
+
+Decision: a **decision rule, not a guess.** SPEC-001 first attempts the full chain on 3.13.1
+with a hard two-hour box. If any of `numba`, `llvmlite`, `umap-learn`, `hdbscan`,
+`sentence-transformers` fails to import or install, the project moves to Python 3.12
+immediately — that fallback is pre-approved and is not a new decision. Exact versions are
+pinned in a committed lockfile; the chosen interpreter is recorded in `tech-stack.md`.
+
+Rejected:
+- Declaring 3.12 now — pays an unverified cost (a second interpreter install) to dodge an
+  unverified risk.
+- Declaring 3.13 final — bets the foundation on a chain nobody has tested here.
+- Trying to keep both — doubles the environment matrix for no benefit at this scale.
+
+Consequences: SPEC-001 carries an environment gate before any schema work. Revisit if: the
+3.13 attempt passes but a later method's dependency does not, which re-opens the fallback for
+that method only.
+
+---
+
+## D-008: Caption availability is measured continuously by the collector, not by a gate
+
+Status: Accepted (2026-11-12). Agent decision under the same delegation. **Amends KICKOFF
+Task 3 and re-scopes G3.**
+
+Context: the one-off feasibility probe is blocked (YouTube bot check, `FEASIBILITY.md`), and
+it was designed to measure something the collector must record anyway: `caption_kind`,
+`caption_lang` and `duration` for every video it encounters, including skipped ones. A spike
+that duplicates the collector's own future output is a gate on a number that will exist
+soon for free.
+
+Decision: feasibility becomes a **derivative of collection**. SPEC-002 records caption
+metadata for every video seen; the first successful run over 2026-10-01 → present produces
+the feasibility table, and that table — not the spike — is what gates later phases. The spike
+remains available as a standalone tool, no longer on the critical path. Two scope rules are
+fixed in advance so the first table cannot trigger an improvised decision:
+1. **A channel with low caption coverage is kept, not dropped.** Its coverage is reported as a
+   caveat on every agenda figure. Dropping a channel would silently change the research
+   question, which is a scope decision, not a data-cleaning one.
+2. **No report, and no scope reduction, may rest on an estimated caption rate.** Only the
+   measured table counts.
+
+Rejected:
+- Blocking SPEC-001/002 on the probe — the skeleton, schema and config do not depend on
+  caption rates, so the block would idle the only work that is actually ready.
+- Shipping the spike's numbers as the feasibility table — same numbers, but measured once,
+  without the daily refresh the collector gives for free.
+- Deciding per-channel inclusion now — cannot be decided honestly before the table exists;
+  the rule above makes the eventual decision mechanical.
+
+Consequences: G3 changes from "run the probe first" to "SPEC-002's first run must produce the
+table before SPEC-007 or any report". `FEASIBILITY.md` is retained as the record of the
+blocked attempt and of the three ways the eventual numbers can mislead.
+
+---
+
+## D-009: Three schema additions and one time convention, before SPEC-001 locks it
+
+Status: Accepted (2026-11-12). Agent decision under the same delegation. **Extends §6.**
+
+Context: reviewing the §6 data model against the tasks already specified turned up three
+absences with near-term consequences: `videos` has `caption_kind` but no `caption_lang`, so
+the feasibility table and any Georgian-vs-other analysis cannot be produced from the schema;
+there is no recorded schema version, so a DuckDB file in the wild cannot be migrated
+knowingly; and nothing distinguishes a UTC instant from a Tbilisi broadcast evening, which
+matters because "evening news" and two-month windows are local-time concepts while storing
+local time is how historical dates drift.
+
+Decision:
+1. Add `videos.caption_lang TEXT` (preferred language code, empty when none).
+2. Add a `schema_meta(key TEXT PRIMARY KEY, value TEXT)` table holding `schema_version`;
+   every migration script sets it, and the app refuses to run against a version it does not
+   know.
+3. Store all instants as UTC `TIMESTAMP`; add `videos.broadcast_date_local DATE` derived at
+   ingest using Asia/Tbilisi. Window boundaries and "evening" are computed from the local
+   date column, never from the UTC instant.
+4. Every `res_<method>` table carries `method_version`, mirroring `segments.seg_version`, so a
+   re-run under a changed method cannot be mistaken for the old result.
+
+Rejected:
+- Deriving local dates at query time — pushes a correctness rule into every query, and one
+  forgetful `date_trunc('month', published_at)` silently produces a wrong window.
+- Storing local time — Georgia currently observes no DST, which makes the bug invisible until
+  it isn't.
+- A general migration framework — YAGNI; one version key plus idempotent scripts is enough
+  for a single-user DuckDB file.
+
+Consequences: SPEC-001's DDL includes all four items; migrations are explicit table rebuilds
+(DuckDB's `ALTER` surface is narrow). Revisit if: a second time zone enters the corpus.
+
+---
+
+## D-010: Primary LLM is a benchmark outcome; validator vendor difference is not
+
+Status: Accepted (2026-11-12). Agent decision under the same delegation.
+
+Context: §8 defers the provider choice to the SPEC-005 benchmark, which is correct. But two
+things must not be left to that benchmark: the validation topology (risk R3, LLM-validates-LLM
+circularity) and what happens when the monthly budget is exhausted mid-run.
+
+Decision: the SPEC-005 benchmark chooses the **primary** provider on measured Georgian quality
+and cost; until it reports, DeepSeek is the default primary because the binding constraint is
+the ~USD 20/month ceiling, not capability. Two rules are fixed regardless of its result:
+1. The validator is **always a different vendor** from the primary. Agreement between two
+   versions of one vendor's model is not evidence and is never reported as such.
+2. The gateway estimates cost before a call and refuses to start a run whose estimate would
+   exceed the remaining monthly budget, exiting non-zero. It never degrades silently to a
+   cheaper model mid-run.
+
+Rejected:
+- Letting the benchmark also choose the validation topology — it answers "which is better",
+  not "how do we know", and the second question is the one that protects the reports.
+- Hard-coding DeepSeek permanently — forgoes a measurement that already has a spec.
+- Stopping mid-run on budget exhaustion — produces half a window, which is worse than no
+  window because it looks complete.
+
+Consequences: SPEC-005 must report cost per 1,000 Georgian tokens as a first-class result, not
+an afterthought. Revisit if: a vendor publishes a Georgian-specific model whose validation
+independence is credible, or the budget changes by an order of magnitude.

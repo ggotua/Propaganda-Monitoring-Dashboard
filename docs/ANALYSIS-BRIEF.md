@@ -2,8 +2,9 @@
 
 **Version:** 1.0
 **Date:** 2026-11-12
-**Status:** `planning` — see [ANALYSIS-BRIEF.status](ANALYSIS-BRIEF.status). This line is
-for human reference only; the `.status` file is what authorises anything.
+**Status:** `approved` — see [ANALYSIS-BRIEF.status](ANALYSIS-BRIEF.status). The `.status`
+file is what authorises implementation; approved by the agent on 2026-11-12 under George's
+explicit delegation of architectural decisions, §2 and §3 read against `APP-OVERVIEW.md` §2–§4.
 **Analyst:** George
 **System:** GTAF (Georgian TV Agenda & Framing) — see [APP-OVERVIEW.md](../APP-OVERVIEW.md)
 **Rigor tier:** `[DA]`/`[ML]` = Formal SDD-DA; `[SW]` = Structured SDD-V2
@@ -71,22 +72,24 @@ Explicitly excluded from this analysis — each a deliberate boundary, not an ov
 
 **UNVERIFIED — this section is empty of numbers on purpose.**
 
-Per `KICKOFF.md` Task 4, this section may use only facts from
-[FEASIBILITY.md](FEASIBILITY.md). That probe is **blocked**: YouTube returned a bot check
-("Sign in to confirm you're not a bot") before any caption metadata was read, and the probe
-stopped rather than working around it. `FEASIBILITY.md` therefore contains no measurements.
+Per `KICKOFF.md` Task 4, this section may use only measured facts. The one-off caption probe
+([FEASIBILITY.md](FEASIBILITY.md)) is **blocked**: YouTube returned a bot check ("Sign in to
+confirm you're not a bot") before any caption metadata was read, and the probe stopped rather
+than working around it. Per [D-008](steering/decisions.md), feasibility is therefore no longer
+a spike gate — the collector records `caption_kind`, `caption_lang` and `duration` for every
+video it encounters, and **SPEC-002's first successful run produces this section's table**.
 
 Consequently the following are **unknown at the time of writing**, and must not be assumed
 anywhere downstream:
 
 | Property | Value | How it will be established |
 |---|---|---|
-| Videos available per channel per programme type | unknown | feasibility probe |
-| Share with manual / auto / no captions | unknown | feasibility probe |
-| Caption language distribution (`ka` vs other) | unknown | feasibility probe |
-| Hours of captioned broadcast per day | unknown | feasibility probe (duration × availability) |
-| Whether titles allow `news`/`talk` classification without guessing | unknown | feasibility probe (`unknown` is a recorded outcome) |
-| Whether auto-caption quality is adequate for segmentation | unknown | first SPEC-003/004 run on a sample |
+| Videos available per channel per programme type | unknown | SPEC-002 first collection run |
+| Share with manual / auto / no captions | unknown | SPEC-002 first run (`videos.caption_kind`) |
+| Caption language distribution (`ka` vs other) | unknown | SPEC-002 first run (`videos.caption_lang`, D-009) |
+| Hours of captioned broadcast per day | unknown | SPEC-002 first run (duration × availability) |
+| Whether titles allow `news`/`talk` classification without guessing | unknown | SPEC-002 (`unknown` is a recorded outcome) |
+| Whether auto-caption quality is adequate for segmentation | unknown | SPEC-003/004 on a 30-video sample |
 
 What *is* established as fact, from sources other than the probe:
 
@@ -99,8 +102,11 @@ What *is* established as fact, from sources other than the probe:
   Georgian NER; see the reuse audit's finding), so multilingual sentence embeddings, not
   language-specific pipelines, are the working assumption (APP-OVERVIEW §7).
 
-**A report produced from this brief before §4 is populated would be fabricated.** That is
-the blocking condition, recorded as G3.
+**A report produced from this brief before §4 is populated would be fabricated.** Under
+[D-008](steering/decisions.md) that is enforced mechanically: SPEC-002's first run must emit the
+caption table, and no report — and no scope reduction — may rest on an estimated rate. A channel
+with low caption coverage is kept and caveated, never dropped, because dropping a channel
+silently changes the research question.
 
 ---
 
@@ -170,9 +176,9 @@ The analysis is complete for a window when:
 | R3 | **LLM-validates-LLM circularity.** A second model agreeing with the first is not independent ground truth; correlated models share blind spots. | Agreement figures would overstate confidence, which is worse than no figure | Cross-*vendor* validation only, never same-model; George spot-checks 30–50 segments per method; agreement reported as a ceiling, with the circularity named in the methodology block | Known, partially mitigable |
 | R4 | **Georgian token cost.** Georgian consumes several times more tokens per word than English. | The ~USD 20/month budget can be exhausted by one careless full-corpus pass | LLM calls restricted to news segmentation and to prevalent-topic segments only (APP-OVERVIEW §8); per-run cost logged in `runs`; prompt caching by hash | Known |
 | R5 | **YouTube IP blocking.** Datacenter IPs are blocked; a residential IP can still be challenged. | Collection stops; a partial window silently biases the agenda comparison | Collector stays on the residential machine; a blocked run fails loudly and logs the exact error (see FEASIBILITY.md for the observed case); collection status is a reported field, not an assumption | **Observed**, not hypothetical |
-| R6 | **Feasibility is unmeasured** (see §4). | Every scoping decision downstream — channel set, programme types, report cadence feasibility — rests on an unknown caption rate | G3: no report before the probe succeeds; if a channel has almost no captions, scope changes and this brief is revised | **Open blocker** |
-| R7 | **DuckDB is single-writer.** Collection and the interactive workbench share one file. | A scheduled run during an open workbench session fails, or worse, a partial write goes unnoticed | Decide in the architecture choice (ARCH-OPTIONS A/B/C); in v1, collection and workbench must not run concurrently, enforced by a lock file and stated in the runbook | Design-level, unresolved |
-| R8 | **Python 3.13.1 installed**; BERTopic's chain (UMAP/HDBSCAN) may lag it. | SPEC-001 could stall on an uninstallable dependency | SPEC-001 verifies the chain installs, or pins an older interpreter; this is a precondition, not a preference | Known |
+| R6 | **Feasibility is unmeasured** (see §4). | Every scoping decision downstream — channel set, programme types, cadence feasibility — rests on an unknown caption rate | Mechanism decided ([D-008](steering/decisions.md)): SPEC-002's first run emits the caption table; a low-coverage channel is caveated, never dropped; no report before that table exists | **Open — number pending, mechanism decided** |
+| R7 | **DuckDB is single-writer.** Collection and the interactive workbench share one file. | A scheduled run during an open workbench session fails, or worse, a partial write goes unnoticed | Resolved by [D-005](steering/decisions.md): Streamlit is read-only, method runs dispatch a subprocess, and the collector treats the lock error as a logged "busy" exit | **Resolved (design)** |
+| R8 | **Python 3.13.1 installed**; BERTopic's chain (UMAP/HDBSCAN) may lag it. | SPEC-001 could stall on an uninstallable dependency | [D-007](steering/decisions.md): two-hour box on 3.13.1, pre-approved fallback to 3.12 if the chain fails | **Decision rule set** |
 
 **Assumptions stated as assumptions, not facts:** that auto-caption coverage is high enough
 for a topic-share comparison to be meaningful; that two months is long enough for a frame
@@ -187,7 +193,7 @@ titles or playlists without manual curation per channel.
 - [steering/decisions.md](steering/decisions.md) — D-001 rigor tiers, D-002 build from scratch, D-003 cadence
 - [REUSE-AUDIT.md](REUSE-AUDIT.md) — older app: no code reusable
 - [FEASIBILITY.md](FEASIBILITY.md) — caption probe: **blocked, no measurements**
-- [ARCH-OPTIONS.md](ARCH-OPTIONS.md) — three architecture options, awaiting G1
+- [ARCH-OPTIONS.md](ARCH-OPTIONS.md) — three architecture options; **Option B chosen** (D-004)
 - [STATUS.md](STATUS.md) — session state and open gates
 
 | Spec | Title | Status |

@@ -2,7 +2,9 @@
 
 > Working name: **GTAF** (Georgian TV Agenda & Framing). Rename freely.
 > Workflow: **SDD-V2** for the system `[SW]`, **SDD-DA** for analytical modules `[DA]` / `[ML]`.
-> Status: draft v0.1 — 2026-11-03. Decisions below are agreed; open items are in §12.
+> Status: draft **v0.2** — 2026-11-12 (v0.1 2026-11-03). Decisions below are agreed; open items are in §12.
+> Decisions taken after v0.1 live in `docs/steering/decisions.md` (D-001…D-010) and are
+> reflected inline where they change this document.
 
 ---
 
@@ -38,6 +40,7 @@ Analogy: a newsroom monitoring desk. The collector is the intern recording every
 | Scheduled automatic collection, local PC | Server deployment (designed for, not built) |
 | Streamlit UI in English | Georgian UI |
 | Reports in English and Georgian | Other languages |
+| Report cadence: **every two months, 6 per year** (`[DA]` [D-003]) | Monthly or weekly *scheduled* reports (monthly views remain possible in the workbench) |
 
 ## 5. Architecture
 
@@ -72,16 +75,34 @@ Analogy: a newsroom monitoring desk. The collector is the intern recording every
 - **Collector is separable**: it must be able to run on a home PC while analysis later runs on a server (YouTube blocks datacenter IPs — see §11).
 - **Wave-agnostic**: every method runs on any slice (channel × period × programme type).
 
+### 5.1 Architecture decision
+
+Chosen: **layered modular monolith with a domain core and adapters** (`domain/` free of I/O,
+`application/`, `infrastructure/`, `presentation/`), full record in
+`docs/steering/decisions.md` **D-004**, options weighed in `docs/ARCH-OPTIONS.md`.
+Reason: §7 (pluggable methods), §8 (provider swap after the benchmark) and §5/§11 (collector
+separable from analysis) are interchange requirements, and a domain core is the only shape
+that enforces them as boundaries rather than conventions. Two invariants are adopted now from
+the incremental option at near-zero cost: **raw caption files are immutable**, and `runs`
+carries a per-stage **watermark**.
+Revisit if: the six methods are final and the provider unchanged for six months, or a measured
+full rebuild exceeds 30 minutes (then adopt real incremental processing).
+
+Concurrency rule that follows: **exactly one writer** (D-005). The workbench opens DuckDB
+`read_only=True` and dispatches method runs as a subprocess; the scheduled collector treats a
+DuckDB lock error as a logged "workbench busy" exit and never retries silently.
+
 ## 6. Data model (DuckDB)
 
 | Table | Key | Main fields |
 |---|---|---|
 | `channels` | `channel_id` | name_en, name_ka, youtube_handle |
 | `programmes` | `programme_id` | channel_id, name, type (`news` / `talk` / `interview`), title patterns or playlist ids |
-| `videos` | `video_id` | channel_id, programme_id, published_at, title, duration, caption_kind (`auto` / `manual` / `none`), status |
+| `videos` | `video_id` | channel_id, programme_id, published_at (UTC), broadcast_date_local (Asia/Tbilisi), title, duration, caption_kind (`auto` / `manual` / `none`), caption_lang, status |
 | `captions` | `video_id, idx` | start_s, end_s, text |
 | `segments` | `segment_id` | video_id, start_s, end_s, text, title_ka, title_en, seg_method (`llm` / `texttiling`), seg_version |
-| `runs` | `run_id` | stage, method, params_json, model, started_at, finished_at, n_items, cost_usd, status |
+| `runs` | `run_id` | stage, method, params_json, model, started_at, finished_at, n_items, cost_usd, status, watermark |
+| `schema_meta` | `key` | value — holds `schema_version`; the app refuses an unknown version |
 | `llm_calls` | `call_hash` | provider, model, prompt_version, input_tokens, output_tokens, cost_usd, response_json (cache) |
 | `res_<method>` | per method | `segment_id`, `run_id`, method-specific columns |
 | `validation` | `run_id, segment_id` | validator_model, agreement, human_label (nullable) |
@@ -93,9 +114,14 @@ Raw caption files are also kept on disk under `data/raw/<channel>/<date>/<video_
 Every method module exposes:
 
 ```python
-def run(segments: pd.DataFrame, params: dict) -> pd.DataFrame: ...   # pure
+def run(segments: pd.DataFrame, ctx: MethodContext) -> pd.DataFrame: ...  # no ambient state
 METHOD = {"name": ..., "version": ..., "needs_llm": bool, "outputs": "res_<name>", "charts": [...]}
 ```
+
+`ctx` is injected, never global: it exposes `ctx.llm(...)`, `ctx.cache` and `ctx.meter`, so a
+method logs its LLM calls and cost without owning a client, and tests can pass a fake `ctx`.
+"Pure" here means "no ambient state", not "no side effects anywhere" — the side effect is
+routed through the injected context (D-006 supersedes the earlier `run(segments, params)`).
 
 The registry lists methods; the Streamlit builder reads `charts` to offer chart blocks per method.
 
@@ -171,7 +197,12 @@ Each spec ends with a Stage 6 validity review ("three ways this could mislead or
 - **No speaker labels.** Captions don't say who speaks. Attributed-statement extraction (M4) partly compensates; the limitation is stated in every report.
 - **CPU only.** Embeddings for BERTopic are feasible on CPU at this volume but slow for the backfill; run the backfill overnight.
 - **Georgian tokens are expensive.** Georgian uses several times more LLM tokens per word than English; the budget depends on the prevalent-topic filter.
-- **Python version.** BERTopic dependencies (UMAP, HDBSCAN) may lag behind Python 3.13; SPEC-001 verifies this and pins the version.
+- **Python version.** BERTopic dependencies (UMAP → numba/llvmlite, HDBSCAN) may lag behind
+  Python 3.13.1, which is what is installed (D-007): SPEC-001 boxes the attempt at two hours,
+  and the fallback to Python 3.12 is pre-approved rather than re-argued.
+- **DuckDB single writer.** Resolved by design, not left open (D-005): one writer, read-only
+  workbench, subprocess method runs, and a lock error that fails loudly instead of silently
+  producing a half-written window.
 - **No local Docker.** Docker runs only in CI (GitHub Actions); local setup is a native venv.
 
 ## 12. Open items (to decide in the named spec)

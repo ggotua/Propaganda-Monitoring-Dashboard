@@ -1,8 +1,9 @@
 # ARCH-OPTIONS — architecture decision input for G1
 
-Status: **open — awaiting George's choice.** This document deliberately makes no
-recommendation. `KICKOFF.md` Task 5 requires options and trade-offs; the decision, and
-the reason for it, belong to [D-004](steering/decisions.md) and are not written here.
+Status: **decided 2026-11-12 — Option B.** Recorded as
+[D-004](steering/decisions.md). This document keeps the full trade-off analysis that led to
+that choice; the choice itself, with its rejected alternatives and revisit trigger, is in the
+decision log.
 
 Inputs used: `APP-OVERVIEW.md` v0.1 (§5 architecture, §6 data model, §7 method contract,
 §8 LLM strategy, §9 interfaces, §11 constraints) and
@@ -147,14 +148,24 @@ segmentation method (SPEC-006), and the prevalent-topic threshold (SPEC-007/015)
 
 ---
 
-## Decision (to be completed by George at G1)
+## Decision (made 2026-11-12)
 
 ```
-Chosen:        Option ___
-Reason:        ___
-Revisit if:    ___
-Migration path (first concrete step if the trigger fires): ___
+Chosen:        Option B — layered modular monolith, domain core + adapters
+Reason:        §7 (pluggable methods) and §8 (provider swap after benchmark) and
+               §5/§11 (collector separable from analysis) are interchange
+               requirements, and only B expresses them as enforceable boundaries.
+               The reuse audit left no legacy structure to preserve, so the
+               layering cost is not paid twice. Option C's one valuable property
+               (immutable raw layer + per-stage watermarks) is adopted as an
+               invariant now, without its framework.
+Revisit if:    the six methods are final and the provider unchanged for six months
+               (adapters were overhead), or a measured full rebuild exceeds
+               30 minutes (the trigger to adopt C's real machinery).
+Migration path: add a watermark column per stage to `runs`, switch stage entry
+               points to "process only rows newer than the watermark", measure the
+               full-rebuild time before and after.
 ```
 
-This block is copied into `docs/steering/decisions.md` as **D-004**, with the rejected
-options and their one-line reasons, once the choice is made.
+Full rationale and rejected alternatives: [D-004](steering/decisions.md).
+The three options above remain as the record of what was weighed, not as live choices.
