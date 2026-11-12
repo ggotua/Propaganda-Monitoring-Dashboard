@@ -1,0 +1,40 @@
+# --- Secrets -------------------------------------------------------------
+.env
+.env.*
+!.env.example
+secrets/
+
+# --- Raw and interim data (never committed) ------------------------------
+data/raw/
+data/interim/
+
+# --- Local database ------------------------------------------------------
+*.duckdb
+*.duckdb.wal
+
+# --- Python --------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# --- Notebooks -----------------------------------------------------------
+.ipynb_checkpoints/
+
+# --- Local scratch -------------------------------------------------------
+.tmp/
+pip-build-tracker-*/
+pip-install-*/
+pip-ephem-wheel-cache-*/
+pip-unpack-*/
+
+# --- OS / editor ---------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
