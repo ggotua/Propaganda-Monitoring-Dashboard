@@ -34,6 +34,11 @@ htmlcov/
 # --- Local scratch -------------------------------------------------------
 .tmp/
 .hf-cache/
+
+# --- Generated reports ---------------------------------------------------
+# Each report embeds ~4.8 MB of Plotly, so they are build artefacts rather than source. Reproduce
+# with `gtaf report --out reports/<name>.html`.
+reports/
 pip-build-tracker-*/
 pip-install-*/
 pip-ephem-wheel-cache-*/

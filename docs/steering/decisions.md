@@ -655,3 +655,36 @@ Consequences: every topic run must carry the stopword version, because changing 
 clusters. Measured outlier rate on the full corpus is **38.6 %**, so every share is reported beside it.
 Revisit if: a Georgian-stopword source with provenance appears, or an LLM label step (SPEC-005) makes
 keyword quality less load-bearing.
+
+---
+
+## D-021: The report is generated HTML, not Quarto
+
+Status: Accepted (2026-11-13). Agent decision under the standing delegation. **Deviates from
+`APP-OVERVIEW.md` §9**, which specifies Quarto (`format: dashboard`, `embed-resources: true`).
+
+Context: implementing SPEC-009 required checking that toolchain. **Quarto is not installed**, and
+`pandoc` is a chocolatey shim pointing at a binary that does not exist. Making Quarto work would mean
+installing a ~100 MB standalone tool *and* repairing pandoc, then pinning both in a pipeline whose
+reproducibility is a stated requirement (`APP-OVERVIEW.md` §3).
+
+Decision: generate one self-contained HTML file directly from Python. Plotly's JavaScript is inlined
+once (`include_plotlyjs="inline"` on the first figure, `False` afterwards), and the document contains
+no external references at all — verified by a test that strips script bodies and asserts no
+`src=`/`href=` points at a remote host.
+
+Rejected:
+- **Install Quarto.** Two external binaries (Quarto plus a working pandoc) to produce a single page
+  whose only Quarto-specific feature would be theming. It also makes the report un-buildable on any
+  machine that lacks the install.
+- **CDN-linked Plotly.** The file must survive being emailed and opened offline; a CDN reference breaks
+  that and is exactly what the test forbids.
+- **PDF instead of HTML.** Loss of interactivity, and the audience reads on screen.
+
+Consequences: the layout and CSS are hand-written (about 60 lines), so a future design system has no
+theme to inherit. The file is ~4.8 MB, essentially all Plotly; that is the price of interactivity
+without a network.
+
+**Revisit if**: the report needs multi-page structure, PDF output, a design system, or per-section
+authorship — that is the point where Quarto's install cost is repaid. Recorded in SPEC-009 §2 so the
+deviation is discoverable from the spec, not only from this log.

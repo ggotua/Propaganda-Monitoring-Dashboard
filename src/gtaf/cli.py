@@ -29,6 +29,7 @@ from gtaf.application.initialize import (
     migrate_database,
     read_schema_version,
 )
+from gtaf.application.report import build_report
 from gtaf.application.segment import segment_video
 from gtaf.application.text import sentences_for_video
 from gtaf.application.topics import InsufficientDataError, run_topics
@@ -49,6 +50,7 @@ from gtaf.infrastructure.repository import DuckDBRepository
 from gtaf.infrastructure.topics_bertopic import DEFAULT_MODEL as DEFAULT_TOPIC_MODEL
 from gtaf.infrastructure.topics_bertopic import BertopicEngine
 from gtaf.infrastructure.youtube import YtDlpSource
+from gtaf.presentation.report_html import render_html
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -128,6 +130,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--min-segments", type=int, default=200, help="refuse to cluster fewer segments"
     )
     topics.add_argument("--top", type=int, default=10, help="topics to print")
+
+    report = sub.add_parser("report", help="write a self-contained HTML report (no Quarto)")
+    report.add_argument("--out", type=Path, required=True, help="output .html path")
+    report.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    report.add_argument("--channel", default=None, help="restrict to one channel_id")
+    report.add_argument("--since", default=None, help="earliest broadcast date (ISO)")
+    report.add_argument("--until", default=None, help="latest broadcast date (ISO)")
 
     return parser
 
@@ -497,6 +506,46 @@ def _cmd_topics(
     return EXIT_OK
 
 
+def _cmd_report(
+    *, db_path: Path, out_path: Path, channel: str | None, since: str | None, until: str | None
+) -> int:
+    """Write a self-contained HTML report for a slice (SPEC-009).
+
+    Args:
+        db_path: Database file, opened read-only.
+        out_path: Destination HTML file.
+        channel: Restrict to one channel id, or None.
+        since: Earliest broadcast date, ISO-8601, or None.
+        until: Latest broadcast date, ISO-8601, or None.
+
+    Returns:
+        Process exit code.
+    """
+    conn = open_database(db_path, read_only=True)
+    try:
+        context = build_report(
+            conn,
+            channel_id=channel,
+            since=date.fromisoformat(since) if since else None,
+            until=date.fromisoformat(until) if until else None,
+        )
+    finally:
+        conn.close()
+
+    html = render_html(context)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html, encoding="utf-8")
+
+    if context.is_empty:
+        print(f"wrote {out_path} — slice is empty, the report says so rather than charting nothing")
+    else:
+        print(
+            f"wrote {out_path} ({len(html):,} bytes) — {len(context.shares)} topic(s), "
+            f"unclassified {context.outlier_rate:.1%}"
+        )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -544,6 +593,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 model=args.model,
                 min_segments=args.min_segments,
                 top=args.top,
+            )
+        if args.command == "report":
+            return _cmd_report(
+                db_path=args.db,
+                out_path=args.out,
+                channel=args.channel,
+                since=args.since,
+                until=args.until,
             )
         if args.command == "collect":
             return _cmd_collect(                config_dir=args.config_dir,

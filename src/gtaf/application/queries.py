@@ -256,11 +256,14 @@ def topic_shares(
     return tuple(shares)
 
 
-def topic_share_by_channel(conn: SqlConnection) -> tuple[tuple[str, int, int], ...]:
+def topic_share_by_channel(
+    conn: SqlConnection, *, channel_id: str | None = None
+) -> tuple[tuple[str, int, int], ...]:
     """Return ``(channel, clustered, total)`` per channel.
 
     Args:
         conn: Read-only connection.
+        channel_id: Restrict to one channel, or None for all.
 
     Returns:
         Rows ordered by channel name, for a coverage chart.
@@ -269,20 +272,54 @@ def topic_share_by_channel(conn: SqlConnection) -> tuple[tuple[str, int, int], .
         This is the chart that makes the outlier rate visible per channel rather than as one global
         number, which is the point of SPEC-008 (`TOPIC-EVAL.md` §3, Q3).
     """
+    where = "WHERE v.channel_id = ?" if channel_id is not None else ""
+    parameters: list[object] = [OUTLIER_TOPIC_ID]
+    if channel_id is not None:
+        parameters.append(channel_id)
     rows = conn.execute(
-        """
+        f"""
         SELECT v.channel_id,
                sum(CASE WHEN r.topic_id <> ? THEN 1 ELSE 0 END) AS clustered,
                count(*) AS total
         FROM res_topics r
         JOIN segments s ON s.segment_id = r.segment_id
         JOIN videos v ON v.video_id = s.video_id
+        {where}
         GROUP BY 1
         ORDER BY 1
         """,
-        [OUTLIER_TOPIC_ID],
+        parameters,
     ).fetchall()
     return tuple((str(row[0]), _as_int(row[1]), _as_int(row[2])) for row in rows)
+
+
+def topic_method_versions(conn: SqlConnection) -> tuple[str, ...]:
+    """Return the method versions present in the active topic assignment.
+
+    Args:
+        conn: Read-only connection.
+
+    Returns:
+        Distinct `res_topics.method_version` values, sorted. More than one means the assignment
+        table mixes runs, which a report must not silently present as one result.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT method_version FROM res_topics ORDER BY method_version"
+    ).fetchall()
+    return tuple(str(row[0]) for row in rows)
+
+
+def segment_methods(conn: SqlConnection) -> tuple[str, ...]:
+    """Return the segmentation methods present.
+
+    Args:
+        conn: Read-only connection.
+
+    Returns:
+        Distinct `segments.seg_method` values, sorted.
+    """
+    rows = conn.execute("SELECT DISTINCT seg_method FROM segments ORDER BY seg_method").fetchall()
+    return tuple(str(row[0]) for row in rows)
 
 
 def log_slice(logger: logging.Logger, **fields: object) -> None:

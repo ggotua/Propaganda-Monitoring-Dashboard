@@ -38,6 +38,8 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "FURB", "RUF", "BLE"]
 # The Streamlit page is largely prose: a methodology paragraph and a long caption. Wrapping them to
 # satisfy E501 would make the rendered text harder to read for no benefit.
 "src/gtaf/presentation/app.py" = ["E501"]
+# The report renderer is an HTML/CSS template; its long lines are markup, not code.
+"src/gtaf/presentation/report_html.py" = ["E501"]
 
 [tool.mypy]
 strict = true
