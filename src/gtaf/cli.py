@@ -31,6 +31,7 @@ from gtaf.application.initialize import (
 )
 from gtaf.application.segment import segment_video
 from gtaf.application.text import sentences_for_video
+from gtaf.application.topics import InsufficientDataError, run_topics
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 from gtaf.domain.models import Programme
 from gtaf.domain.segment import MAX_S, MIN_S, TARGET_S
@@ -45,6 +46,8 @@ from gtaf.infrastructure.db import (
 from gtaf.infrastructure.logging_setup import log_event, setup_logging
 from gtaf.infrastructure.raw_store import FileRawStore
 from gtaf.infrastructure.repository import DuckDBRepository
+from gtaf.infrastructure.topics_bertopic import DEFAULT_MODEL as DEFAULT_TOPIC_MODEL
+from gtaf.infrastructure.topics_bertopic import BertopicEngine
 from gtaf.infrastructure.youtube import YtDlpSource
 
 EXIT_OK = 0
@@ -114,6 +117,17 @@ def _build_parser() -> argparse.ArgumentParser:
     segment.add_argument("--target", type=float, default=TARGET_S, help="target window seconds")
     segment.add_argument("--max", type=float, default=MAX_S, help="hard ceiling seconds")
     segment.add_argument("--min", type=float, default=MIN_S, help="minimum trailing remainder")
+
+    topics = sub.add_parser("topics", help="cluster segments into topics (BERTopic, no LLM)")
+    topics.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    topics.add_argument("--log-dir", type=Path, default=Path("logs"))
+    topics.add_argument(
+        "--model", default=DEFAULT_TOPIC_MODEL, help="sentence-transformers model id"
+    )
+    topics.add_argument(
+        "--min-segments", type=int, default=200, help="refuse to cluster fewer segments"
+    )
+    topics.add_argument("--top", type=int, default=10, help="topics to print")
 
     return parser
 
@@ -426,6 +440,63 @@ def _cmd_segment(
     return EXIT_OK
 
 
+def _cmd_topics(
+    *, db_path: Path, log_dir: Path, model: str, min_segments: int, top: int
+) -> int:
+    """Cluster segments into topics and persist the assignments (SPEC-007 FR-1…FR-7).
+
+    Args:
+        db_path: Database file, opened read-write.
+        log_dir: Directory for the JSON log.
+        model: Sentence-transformers model id.
+        min_segments: Refuse below this many segments.
+        top: How many topics to print.
+
+    Returns:
+        Process exit code.
+    """
+    logger = setup_logging(log_dir)
+    conn = connect(db_path, read_only=False)
+    try:
+        version = read_schema_version(conn)
+        if version != SUPPORTED_SCHEMA_VERSION:
+            raise SchemaVersionError(version, SUPPORTED_SCHEMA_VERSION)
+        repo = DuckDBRepository(conn)
+        engine = BertopicEngine(model)
+        result = run_topics(repo, engine, repo, min_segments=min_segments)
+        topic_rows = conn.execute(
+            "SELECT topic_id, n_segments, label_ka, keywords FROM topics "
+            "WHERE run_id = ? ORDER BY n_segments DESC LIMIT ?",
+            [result.run_id, top],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    log_event(
+        logger,
+        20,
+        "topics.done",
+        run_id=result.run_id,
+        segments=result.n_segments,
+        topics=result.n_topics,
+        outliers=result.n_outliers,
+        outlier_rate=round(result.outlier_rate, 4),
+        method_version=result.method_version,
+    )
+
+    print(f"run {result.run_id}: {result.method_version}")
+    print(
+        f"segments {result.n_segments} | topics {result.n_topics} | "
+        f"outliers {result.n_outliers} ({result.outlier_rate:.1%})"
+    )
+    print("\n  topic  size  label / keywords")
+    for topic_id, n_segments, label, keywords in topic_rows:
+        marker = "OUTLIER" if int(topic_id) == -1 else f"t{topic_id}"
+        terms = ", ".join(list(keywords)[:8]) if keywords else (label or "")
+        print(f"  {marker:>7} {int(n_segments):>5}  {terms}")
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -466,6 +537,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 min_s=args.min,
                 log_dir=Path("logs"),
             )
+        if args.command == "topics":
+            return _cmd_topics(
+                db_path=args.db,
+                log_dir=args.log_dir,
+                model=args.model,
+                min_segments=args.min_segments,
+                top=args.top,
+            )
         if args.command == "collect":
             return _cmd_collect(                config_dir=args.config_dir,
                 db_path=args.db,
@@ -496,6 +575,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         # The run row has already been marked 'blocked' in the database (SPEC-002 FR-7).
         print(f"blocked: {exc}", file=sys.stderr)
         return EXIT_BLOCKED
+    except InsufficientDataError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_CONFIG
     except Exception as exc:  # noqa: BLE001 - top-level guard; anything else is exit 1
         print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return EXIT_ERROR

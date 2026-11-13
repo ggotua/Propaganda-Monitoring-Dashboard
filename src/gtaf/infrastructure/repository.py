@@ -16,6 +16,7 @@ import duckdb
 from gtaf.domain.collector import CaptionCue
 from gtaf.domain.models import Channel, Programme, Video
 from gtaf.domain.segment import SegmentDraft
+from gtaf.domain.topics import TopicAssignment, TopicSummary
 
 
 def _utc_now() -> datetime:
@@ -368,6 +369,90 @@ class DuckDBRepository:
             self._conn.execute("ROLLBACK")
             raise
         return len(drafts)
+
+    def list_segments(self) -> tuple[tuple[str, str], ...]:
+        """Return every stored segment as ``(segment_id, text)``.
+
+        Returns:
+            Segments in video and time order.
+        """
+        rows = self._conn.execute(
+            "SELECT segment_id, text FROM segments ORDER BY video_id, start_s"
+        ).fetchall()
+        return tuple((str(row[0]), str(row[1])) for row in rows)
+
+    def replace_topic_results(
+        self,
+        run_id: str,
+        assignments: Sequence[TopicAssignment],
+        summaries: Sequence[TopicSummary],
+        method_version: str,
+    ) -> int:
+        """Replace the active topic assignment for every segment.
+
+        Args:
+            run_id: Owning run.
+            assignments: One assignment per segment.
+            summaries: One summary per topic, including the outlier bucket.
+            method_version: Version recorded on every assignment row.
+
+        Returns:
+            Number of assignment rows written.
+
+        Notes:
+            Two transactions (D-013): the previous assignments are deleted and committed before the
+            new ones are inserted, because `res_topics` references both `segments` and `runs`. Only
+            the *active* assignment is replaced — `topics` rows are scoped by `run_id`, so an
+            earlier run's topic metadata survives for comparison (SPEC-007 §4).
+        """
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            self._conn.execute("DELETE FROM res_topics")
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+
+        if not assignments:
+            return 0
+
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            self._conn.executemany(
+                "INSERT INTO topics (run_id, topic_id, label_ka, label_en, keywords, n_segments) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        run_id,
+                        summary.topic_id,
+                        summary.label_ka,
+                        summary.label_en,
+                        list(summary.keywords),
+                        summary.n_segments,
+                    )
+                    for summary in summaries
+                ],
+            )
+            self._conn.executemany(
+                "INSERT INTO res_topics "
+                "(segment_id, run_id, topic_id, probability, method_version) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    (
+                        assignment.segment_id,
+                        run_id,
+                        assignment.topic_id,
+                        assignment.probability,
+                        method_version,
+                    )
+                    for assignment in assignments
+                ],
+            )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+        return len(assignments)
 
     def start_run(self, stage: str, params_json: str) -> str:
         """Open a run row.

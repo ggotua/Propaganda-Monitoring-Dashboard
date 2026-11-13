@@ -123,4 +123,75 @@ and a smaller `n_neighbors` sweep — recorded as **Revisit if** the corpus exce
 
 ## Implementation Status
 
-STATUS: NOT STARTED.
+STATUS: COMPLETE
+Implemented: 2026-11-13
+Approved: 2026-11-13 (standing delegation)
+
+### Files created
+
+| Path | Purpose |
+|---|---|
+| `src/gtaf/domain/topics.py` | `TopicAssignment`, `TopicSummary`, outlier rules, share maths, Georgian stopwords |
+| `src/gtaf/application/topics.py` | `TopicEngine`/`SegmentReader`/`TopicRepository` protocols, `run_topics`, `InsufficientDataError` |
+| `src/gtaf/infrastructure/topics_bertopic.py` | BERTopic adapter with deterministic UMAP/HDBSCAN |
+| `src/gtaf/infrastructure/repository.py` | `list_segments`, `replace_topic_results` |
+| `src/gtaf/cli.py` | `topics` command |
+| `spikes/topic_model_eval.py` | the model comparison behind D-020 |
+| `tests/test_topics.py` | 10 tests, engine faked so no model loads |
+
+### Verification with evidence
+
+```
+Claim:     Lint, strict types and tests clean
+Command:   ruff check src/ tests/ spikes/ ; mypy ; pytest -q
+Exit code: 0 / 0 / 0
+Summary:   All checks passed ; 27 files clean ; 135 passed
+Verdict:   PASS
+
+Claim:     Model choice measured, not assumed
+Command:   python spikes/topic_model_eval.py
+Exit code: 0
+Summary:   MiniLM 11 topics / 30.0% outliers / 28.1 s
+           mpnet   8 topics / 22.8% outliers / 53.6 s  -> chosen
+Verdict:   PASS
+
+Claim:     Full corpus clustered and persisted
+Command:   python -m gtaf topics --top 12
+Exit code: 0
+Summary:   segments 2355 | topics 30 | outliers 910 (38.6%)
+           method bertopic-paraphrase-multilingual-mpnet-base-v2-1
+           top topics: China visit (168), patients/cardiac (100), EU dialogue (98) …
+Verdict:   PASS
+```
+
+### Deviations from the original spec
+
+1. **BERTopic 0.17 takes no `random_state`.** §3 named one; determinism is actually controlled by the
+   UMAP and HDBSCAN models, which the adapter now supplies explicitly with seed 42. The first
+   evaluation run failed on this, so the deviation is measured rather than theoretical.
+2. **Georgian stopwords and `max_df = 0.4` were added to the vectoriser** — not in §3. Without them
+   every cluster's top terms were `და, რომ, ეს, არის` (grammar, not subjects). Recorded as D-020.
+3. **`probability` is NULL.** Probabilities are not computed (`calculate_probabilities=False`) because
+   they roughly triple runtime for a value no current consumer uses. The column exists for the method
+   that needs it.
+4. **`label_en` is always NULL** in this slice, as §1 said it would be: English labels need SPEC-005's
+   gateway. `label_ka` is the top keyword, not a phrase.
+5. **The 600-segment evaluation sample was biased** (`ORDER BY segment_id`), which made the measured
+   22.8 % outlier rate 16 points better than the full corpus's 38.6 %. Disclosed in `TOPIC-EVAL.md`;
+   the *model comparison* remains valid because both models saw the same sample.
+
+### Lessons learned
+
+- A topic model without stopwords is not a weak model; it is a model of grammar. The failure was
+  invisible in every metric — topic count and size looked healthy — and only the *keywords* exposed it.
+  Reading the labels is not optional.
+- The predicted validity risk (clusters tracking format rather than subject) materialised: t10 is
+  greetings and thanks. The review question earned its place.
+- Convenience sampling inflated the headline metric by 16 points. Any future evaluation must sample
+  across videos, not take the first N rows.
+
+### Next
+
+`docs/TOPIC-EVAL.md` §3 constrains what may be claimed; SPEC-008 (workbench) can now chart topics **with
+the outlier rate displayed**, and SPEC-006 (real segmentation) should be evaluated by comparing its
+topics against these fixed-window ones.

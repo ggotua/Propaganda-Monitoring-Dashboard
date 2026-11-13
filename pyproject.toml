@@ -52,6 +52,12 @@ ignore_missing_imports = true
 module = "yt_dlp.*"
 ignore_missing_imports = true
 
+# The ML stack ships no py.typed marker (or stubs). Importing it is confined to one adapter module,
+# and its types are not part of this project's contract.
+[[tool.mypy.overrides]]
+module = ["bertopic", "bertopic.*", "hdbscan", "hdbscan.*", "sklearn", "sklearn.*", "umap", "umap.*", "sentence_transformers", "sentence_transformers.*", "torch", "torch.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

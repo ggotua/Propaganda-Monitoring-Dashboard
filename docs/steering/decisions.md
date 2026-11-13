@@ -622,3 +622,36 @@ downgrade — and note that this chain working today is not a promise about the 
 would have triggered a needless downgrade. The distribution is `umap-learn` but the import is `umap`.
 The diagnostic had the false-negative bug it was written to prevent — "absent" read as
 "incompatible". Fixed, and the module list now carries the distribution-vs-import note.
+
+---
+
+## D-020: mpnet-base for topics, and Georgian stopwords are mandatory
+
+Status: Accepted (2026-11-13). Measured in `docs/TOPIC-EVAL.md`; agent decision under the standing
+delegation.
+
+Context: `APP-OVERVIEW.md` §12 left the embedding model open. SPEC-007 §2 required a measurement rather
+than a preference. Two candidates were compared on 600 segments with identical parameters. Separately,
+the first topic run produced clusters whose top terms were `და, რომ, ეს, არის, ამ, არ` — Georgian
+function words — because `CountVectorizer` had no stopword list for Georgian.
+
+Decision:
+1. **Embedding model: `paraphrase-multilingual-mpnet-base-v2`**, chosen on outlier rate (22.8 % vs
+   30.0 % for MiniLM) at ~1.9× embedding time. The spec made outlier rate the primary criterion because
+   a model that discards 40 % of the corpus makes every share a lie about coverage.
+2. **Georgian stopwords plus `max_df = 0.4` are mandatory** in the topic vectoriser, not optional
+   tuning. The conservative list lives in `domain/topics.py`; entries are only unambiguous function
+   words, because a wrong entry silently deletes real content from every topic.
+
+Rejected:
+- **MiniLM for speed.** 7 points more outliers to save 25 seconds on 600 segments is the wrong trade
+  when outlier rate constrains every downstream claim.
+- **No stopword list, rely on `max_df` alone.** Untested and likely insufficient: `და` appears in most
+  documents, but the model also needs the rarer function words (`რომ`, `ეს`, `ამ`) suppressed.
+- **A bigger Georgian stopword list from an external source.** Unmaintained lists of unknown
+  provenance, and a wrong entry is invisible once applied.
+
+Consequences: every topic run must carry the stopword version, because changing the list changes the
+clusters. Measured outlier rate on the full corpus is **38.6 %**, so every share is reported beside it.
+Revisit if: a Georgian-stopword source with provenance appears, or an LLM label step (SPEC-005) makes
+keyword quality less load-bearing.
