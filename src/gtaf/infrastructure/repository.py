@@ -275,6 +275,26 @@ class DuckDBRepository:
         ).fetchone()
         return row is not None
 
+    def fetch_cues(self, video_id: str) -> tuple[CaptionCue, ...]:
+        """Return a video's caption cues in cue order (SPEC-003 input).
+
+        Args:
+            video_id: YouTube video id.
+
+        Returns:
+            Cues ordered by ``idx``; an empty tuple when the video has none.
+        """
+        rows = self._conn.execute(
+            "SELECT idx, start_s, end_s, text FROM captions WHERE video_id = ? ORDER BY idx",
+            [video_id],
+        ).fetchall()
+        return tuple(
+            CaptionCue(
+                idx=int(row[0]), start_s=float(row[1]), end_s=float(row[2]), text=str(row[3])
+            )
+            for row in rows
+        )
+
     def start_run(self, stage: str, params_json: str) -> str:
         """Open a run row.
 

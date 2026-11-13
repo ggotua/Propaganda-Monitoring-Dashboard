@@ -7,10 +7,15 @@ Sessions: (1) kickoff · (2) architecture decisions · (3) SPEC-001 written · (
 
 ## Where the project stands
 
-**A full backfill is running as this file is written** (started 2026-11-13 06:27, all six channels,
-`--listing-limit 1500 --skip-existing`, sequential, ~13 h expected). Check `.tmp/backfill_all.log`
-for per-channel START/END lines; the job stops the whole sequence if any channel returns exit 5
-(blocked). Until it finishes, the numbers below are the Imedi-only first pass.
+**Collection was halted by a rate limit, and the normaliser is built.** The second backfill reached
+262 videos before the caption endpoint returned `HTTP Error 429` for every request; the run is
+stopped and the cause is fixed (D-018 — a 429 on a caption payload now stops the run instead of being
+mistaken for a per-video skip). SPEC-003 is implemented: cues become timestamped sentences with turn
+boundaries and quality flags, verified on a real 31-minute bulletin.
+
+**Current corpus: 262 videos, 9 days (2026-11-04 … 2026-11-12), 87k+ cues, all auto `ka`.** The
+backfill to 2026-10-01 is a multi-day operation in paced batches, not a single run, because the
+caption endpoint's per-session budget is ~260 payload downloads.
 
 **Foundation and collector both exist and are verified.** SPEC-001 gives the schema, config, logging
 and CLI; SPEC-002 gives a working collector — 86 tests, ruff/mypy clean, and a live run that stored
@@ -95,7 +100,8 @@ were taken during implementation.
 | G3 — Feasibility | **Closed (measured 2026-11-12)** — 99/99 captioned, 0 manual; D-008 still requires SPEC-002's full backfill to re-measure across the whole archive |
 | Remote | **Closed** — pushed, verified against the remote |
 | SPEC-001 | **Approved and implemented** — evidence in the spec's Implementation Status |
-| SPEC-002 | **Approved and implemented** — collector works live; 86 tests; evidence in the spec |
+| SPEC-002 | **Approved and implemented** — collector works live; 90 tests; evidence in the spec |
+| SPEC-003 | **Approved and implemented** — cues → sentences, 111 tests, spot-checked on a real bulletin |
 | D-007 interpreter chain | **Open, unproven** — `spikes/bertopic_chain_check.py` exits 3 (absent ≠ incompatible) |
 
 ## Waiting on the physical world

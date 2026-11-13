@@ -230,13 +230,22 @@ class YtDlpSource:
             The payload text.
 
         Raises:
-            VideoUnavailableError: If the payload cannot be fetched; the video is then skipped
-                rather than stored with captions it does not have.
+            ClientBlockedError: If the caption endpoint rate-limits or refuses us (429/403). This
+                must stop the run: the throttle exists to stay under that limit, and continuing
+                after a 429 is what turns a pause into a hard block.
+            VideoUnavailableError: For any other payload failure; the video is skipped rather than
+                stored with captions it does not have.
         """
         try:
             with urllib.request.urlopen(url, timeout=30) as response:
                 return str(response.read().decode("utf-8", errors="replace"))
         except Exception as exc:
-            raise VideoUnavailableError(f"caption payload unavailable: {exc}") from exc
+            message = f"caption payload unavailable: {exc}"
+            # The caption/timedtext endpoint rate-limits independently of the metadata API. A 429
+            # here was previously misclassified as a per-video skip, so the run kept requesting and
+            # deepened the limit instead of stopping — the same shape of bug as the age gate.
+            if is_client_block(message):
+                raise ClientBlockedError(message) from exc
+            raise VideoUnavailableError(message) from exc
         finally:
             time.sleep(self._throttle)

@@ -25,6 +25,7 @@ from pathlib import Path
 from gtaf.application.collect import ClientBlockedError, CollectPlan, run_collection
 from gtaf.application.config import ConfigError
 from gtaf.application.initialize import SchemaVersionError, initialize_database, read_schema_version
+from gtaf.application.text import sentences_for_video
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 from gtaf.domain.models import Programme
 from gtaf.infrastructure.config_io import load_configuration
@@ -94,6 +95,11 @@ def _build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--skip-existing", action="store_true",
                          help="do not re-fetch videos already in the database (makes a long "
                               "backfill resumable after an interruption)")
+
+    text = sub.add_parser("text", help="print normalised sentences for one video (read-only)")
+    text.add_argument("--video-id", required=True, help="YouTube video id")
+    text.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    text.add_argument("--limit", type=int, default=40, help="sentences to print (default: 40)")
 
     return parser
 
@@ -307,6 +313,40 @@ def _cmd_collect(
     return EXIT_OK
 
 
+def _cmd_text(video_id: str, db_path: Path, limit: int) -> int:
+    """Print normalised sentences for one video (FR-8).
+
+    Args:
+        video_id: YouTube video id.
+        db_path: Database file, opened read-only.
+        limit: Maximum sentences to print.
+
+    Returns:
+        Process exit code.
+    """
+    conn = open_database(db_path, read_only=True)
+    try:
+        result = sentences_for_video(video_id, DuckDBRepository(conn))
+    finally:
+        conn.close()
+
+    if not result.sentences:
+        print(f"{video_id}: no sentences (no captions, or nothing after normalisation)")
+        return EXIT_OK
+
+    print(
+        f"{video_id}: {len(result.sentences)} sentences, {result.n_events} non-speech events, "
+        f"{result.n_flagged} flagged (normaliser v{result.version})"
+    )
+    for sentence in result.sentences[:limit]:
+        flags = f" [{','.join(sentence.flags)}]" if sentence.flags else ""
+        print(
+            f"{sentence.start_s:7.1f}-{sentence.end_s:7.1f} t{sentence.turn_index:<3}{flags} "
+            f"{sentence.text}"
+        )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -316,6 +356,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns:
         Process exit code.
     """
+    # This tool prints Georgian text. A Windows console in a legacy code page raises
+    # UnicodeEncodeError on the first Georgian character, which turned a working command into exit
+    # 1 with a traceback. Reconfigure once, with replacement, so unprintable characters degrade
+    # instead of killing the command — the data is never altered, only its terminal rendering.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
     args = _build_parser().parse_args(argv)
     try:
         if args.command == "init-db":
@@ -326,9 +375,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_check_config(args.config_dir)
         if args.command == "doctor":
             return _cmd_doctor(args.json, args.data_dir)
+        if args.command == "text":
+            return _cmd_text(args.video_id, args.db, args.limit)
         if args.command == "collect":
-            return _cmd_collect(
-                config_dir=args.config_dir,
+            return _cmd_collect(                config_dir=args.config_dir,
                 db_path=args.db,
                 raw_dir=args.raw_dir,
                 log_dir=args.log_dir,

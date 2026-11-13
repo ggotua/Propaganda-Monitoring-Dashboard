@@ -460,3 +460,135 @@ single-analyst desktop tool is acceptable but must be stated in the runbook. A l
 therefore blocks analysis for its whole duration — another reason backfills are chunked per channel.
 Revisit if: a second machine must read the corpus while collection continues, which is the trigger to
 move to a server database or a read replica.
+
+---
+
+## D-015: The age-gated gap is accepted and reported; cookies are an escape hatch, not a default
+
+Status: Accepted (2026-11-13). Agent decision under George's standing delegation ("make all
+decisions as senior software developer / systems analyst and continue", 2026-11-13).
+
+Context: the first Imedi backfill skipped **26 videos (≈9.7 % of in-window attempts)** because
+YouTube demands age verification. Those videos are invisible to every coverage figure. The only way
+to read them is to authenticate as George — `--cookies-from-browser` or an exported cookie file.
+
+Decision: **accept the gap, measure it, and report it.** Every coverage figure carries the skipped
+count per channel. Authentication is supported as an explicit opt-in flag (`--cookies-file`) for the
+case where a specific finding needs those videos, but it is never the default and never silent.
+
+Rejected:
+- **Running authenticated by default.** Three costs, one fatal: cookies expire, so the pipeline would
+  break silently weeks later and look like a YouTube block; collection would run as George's personal
+  identity, which is a materially different act from reading public metadata; and a corpus whose
+  contents depend on a logged-in session is not reproducible by a colleague, which violates the
+  project's own reproducibility bar (APP-OVERVIEW §3).
+- **Dropping age-gated videos silently.** That is the failure mode this whole project exists to
+  avoid: a number that looks complete and isn't.
+- **Excluding Imedi from the agenda analysis.** Overreaction to a 9.7 % slice of one channel; the
+  correct response is a caveat, not a scope change.
+
+Consequences: roughly 9 % of one channel's output is systematically absent, and it is probably not
+random — age gates cluster on graphic crime and conflict footage, which is exactly the content an
+agenda analysis of "what do they choose to show" cares about. That makes it a **stated limitation**,
+not a rounding error, and it belongs in the methodology block of every report rather than a footnote.
+Revisit if: the gap exceeds ~15 % for any channel, or a specific research question turns on those
+videos, in which case a one-off authenticated run recovers them into the same store.
+
+---
+
+## D-016: Collection is a scheduled maintenance window, not an interactive operation
+
+Status: Accepted (2026-11-13). Agent decision under the same delegation. **Implements D-014
+operationally.**
+
+Context: D-014 established that collection excludes readers. Measured throughput is ~7 s/video and
+the full window is ~7,000 videos, so the backfill is ~13 hours and daily incremental collection will
+be minutes. One 13-hour exclusive window is acceptable once; a recurring one is not.
+
+Decision:
+1. **Backfills are chunked per channel** and always run with `--skip-existing`, so they are resumable
+   and never restart from zero.
+2. **Daily incremental collection** (SPEC-010) runs at night, per channel, bounded by the `runs`
+   watermark — it must not re-walk the archive.
+3. **The workbench must say "collection in progress"**, not surface a raw `IO Error`. That is a
+   SPEC-008 requirement, recorded here so it is not discovered by a user instead.
+4. Analysis is not attempted during collection.
+
+Rejected:
+- **Running collection continuously in the background** — it would block analysis unpredictably,
+  which is worse than a known window.
+- **A second read-only copy** — real complexity deferred until contention is measured (unchanged from
+  D-005/D-014).
+- **Lowering the throttle to finish faster** — the throttle is the only thing standing between this
+  project and a bot check that already cost it a full run.
+
+Consequences: throughput is fixed at ~7 s/video, so a full rebuild is a nightly job, not an
+interactive one. Revisit if: a nightly incremental run starts exceeding ~30 minutes, which would mean
+the corpus grew faster than the schedule assumed.
+
+---
+
+## D-017: Sentences are transient — no `sentences` table
+
+Status: Accepted (2026-11-13). Agent decision under the same delegation. Recorded while writing
+SPEC-003.
+
+Context: `APP-OVERVIEW.md` §6 has `captions` and `segments` but no `sentences`, while the pipeline
+clearly needs a sentence unit between them. The obvious move — add a table — would require a migration,
+a schema-version bump, ~2M rows/year, and a second copy of text that can drift from `captions`.
+
+Decision: **no table.** A sentence is a deterministic function of `captions` plus
+`NORMALISER_VERSION`: `normalise_cues` is pure, takes cues in, returns sentences out, with no clock,
+no I/O and no state. Anything that consumes sentences recomputes them.
+
+Rejected:
+- **Persisting sentences.** Buys nothing analytically — `segments` already carries the timestamps
+  traceability needs — and creates a copy that goes stale the moment the rules change.
+- **Persisting a sentence id for annotations.** Premature: if a future method needs sentence-level
+  labels, the key can be derived as `(video_id, start_s)`, and that is the moment to add the table,
+  not now.
+- **Treating normalisation as part of `segments`.** Would bury a rule inside a later stage, which is
+  exactly the SoC failure the workflow warns about.
+
+Consequences: every consumer must carry `normaliser_version` so results produced under different rules
+are distinguishable (SPEC-003 §3.3). Recomputing 7,000 videos costs seconds, so this is cheap. Revisit
+if: a method needs to store per-sentence annotations, or a downstream join requires a stable sentence
+table.
+
+---
+
+## D-018: The caption endpoint rate-limits; collection runs in paced batches
+
+Status: Accepted (2026-11-13). Established by measurement during the first full backfill, then fixed
+in code. **Constrains D-016's schedule.**
+
+Context: after roughly 260 caption payload downloads in one session, the caption/timedtext endpoint
+began returning **`HTTP Error 429: Too Many Requests`** for every video (log: 119 `video_skipped`
+events). Two problems were exposed at once:
+
+1. **A classification bug.** `_download_text` treated every payload failure as per-video, so a
+   429 became "skip this video" instead of "stop" — and the collector kept requesting, deepening the
+   limit. This is the same shape as the age-gate bug that once killed a 240-video run.
+2. **A capacity fact.** The metadata API tolerated ~260 requests in a session; the payload endpoint
+   did not. So the sustainable rate is bounded by payload downloads, not by videos fetched.
+
+Decision:
+- A 429 or 403 on the caption payload raises `ClientBlockedError`, which marks the run `blocked` and
+  exits 5 (SPEC-002 FR-7). The collector stops at the first one; it never retries.
+- Collection runs in **paced batches**: `--limit` caps a run (~150 videos), runs are separated by
+  tens of minutes, and `--skip-existing` makes each batch resume where the last stopped.
+- The 2 s throttle stays. It is not the limiting factor at ~260 requests, but lowering it would make
+  the limit arrive sooner.
+
+Rejected:
+- **Retrying after a 429 with backoff.** The run would appear to make progress while the limit
+  deepened; a hard stop makes the state legible.
+- **Raising the throttle to "hide" the problem.** It reduces throughput without changing the
+  per-session budget, and the real constraint is total requests per window.
+- **Authenticated requests to raise the quota.** Same three objections as D-015, and it would make
+  collection depend on a personal session.
+
+Consequences: the full backfill is a multi-day background operation, not a 13-hour one. Coverage
+figures must state when collection was rate-limited, because a blocked run leaves a window
+incomplete. Revisit if: a measured pattern shows the limit is per-hour rather than per-session, in
+which case batches can be scheduled accordingly.
