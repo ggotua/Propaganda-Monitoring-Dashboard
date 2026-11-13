@@ -1,18 +1,22 @@
-"""Database initialisation use case (FR-1, FR-2, FR-3).
+"""Schema creation and migration (SPEC-001 §5, SPEC-007 §2).
 
-Written against a narrow protocol rather than DuckDB so the rules can be tested with any SQL
-engine, and so this layer imports no infrastructure type (D-004). The composition root in
-``gtaf.cli`` supplies the real connection and the migration text.
+Migrations are a chain of numbered files, applied in order, with `schema_meta.schema_version` as the
+single source of truth. A v1 database migrates forward by running only the files it has not seen.
+
+Written against a narrow protocol rather than DuckDB so the rules can be tested with any SQL engine,
+and so this layer imports no infrastructure type (D-004).
 """
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 
-_MIGRATION_VERSION = SUPPORTED_SCHEMA_VERSION
+_MIGRATION_NAME_RE = re.compile(r"^(\d{3})_.+\.sql$")
 
 
 class SqlCursor(Protocol):
@@ -36,33 +40,81 @@ class SqlConnection(Protocol):
 
 
 class SchemaVersionError(RuntimeError):
-    """Raised when a database's schema version is not the one this code understands.
+    """Raised when a database's schema version is not one this build can move.
 
     Attributes:
         found: Version read from the database.
-        supported: Version this build supports.
+        supported: Highest version this build knows.
     """
 
     def __init__(self, found: object, supported: str) -> None:
         self.found = found
         self.supported = supported
         super().__init__(
-            f"unsupported schema_version {found!r} (this build supports {supported!r}). "
+            f"unsupported schema_version {found!r} (this build supports up to {supported!r}). "
             f"Refusing to proceed — migrate the database or use a matching build."
         )
 
 
 @dataclass(frozen=True, slots=True)
-class InitResult:
-    """Outcome of ``initialize_database``.
+class Migration:
+    """One numbered migration file.
 
     Attributes:
-        applied: True when the migration was executed, False when the database already existed.
-        schema_version: Version present after the call.
+        version: Numeric version taken from the filename, e.g. ``2`` for ``002_topics.sql``.
+        name: Filename, for logging.
+        sql: File contents.
     """
 
-    applied: bool
-    schema_version: str
+    version: int
+    name: str
+    sql: str
+
+
+@dataclass(frozen=True, slots=True)
+class MigrateResult:
+    """Outcome of applying migrations.
+
+    Attributes:
+        from_version: Version before the call, or None for a fresh database.
+        to_version: Version after the call.
+        applied: Versions applied, in order (empty when already current).
+    """
+
+    from_version: str | None
+    to_version: str
+    applied: tuple[int, ...]
+
+
+def parse_migrations(files: Sequence[tuple[str, str]]) -> list[Migration]:
+    """Build the migration chain from ``(filename, sql)`` pairs.
+
+    Args:
+        files: Filename and contents for every candidate file.
+
+    Returns:
+        Migrations sorted by version.
+
+    Raises:
+        ValueError: If a filename does not carry a numeric version, or two files share one. Two
+            files with the same number would make the applied order ambiguous — that must fail
+            loudly rather than silently pick one.
+    """
+    migrations: list[Migration] = []
+    seen: dict[int, str] = {}
+    for name, sql in files:
+        match = _MIGRATION_NAME_RE.match(name)
+        if match is None:
+            continue
+        version = int(match.group(1))
+        if version in seen:
+            raise ValueError(
+                f"duplicate migration version {version}: {seen[version]!r} and {name!r}"
+            )
+        seen[version] = name
+        migrations.append(Migration(version=version, name=name, sql=sql))
+    migrations.sort(key=lambda migration: migration.version)
+    return migrations
 
 
 def split_statements(sql: str) -> list[str]:
@@ -76,14 +128,11 @@ def split_statements(sql: str) -> list[str]:
 
     Notes:
         Full-line comments are dropped **before** splitting, because a comment may legitimately
-        contain a semicolon or a quote and would otherwise be cut into a fragment that looks
-        like SQL — which is exactly the bug that produced "unterminated quoted identifier" the
-        first time this ran. Trailing comments after a statement are not supported; migration
-        files put comments on their own lines.
+        contain a semicolon or a quote and would otherwise be cut into a fragment that looks like
+        SQL. Trailing comments after a statement are not supported; migration files put comments on
+        their own lines.
     """
-    body = "\n".join(
-        line for line in sql.splitlines() if not line.lstrip().startswith("--")
-    )
+    body = "\n".join(line for line in sql.splitlines() if not line.lstrip().startswith("--"))
     return [statement.strip() for statement in body.split(";") if statement.strip()]
 
 
@@ -101,42 +150,74 @@ def read_schema_version(conn: SqlConnection) -> str | None:
     ).fetchall()
     if not tables:
         return None
-    row = conn.execute(
-        "SELECT value FROM schema_meta WHERE key = 'schema_version'"
-    ).fetchone()
+    row = conn.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()
     if row is None:
         return None
     return str(row[0])
 
 
-def initialize_database(conn: SqlConnection, migration_sql: str) -> InitResult:
-    """Create the schema at a path, idempotently (FR-1, FR-3).
+def _apply(conn: SqlConnection, migration: Migration) -> None:
+    """Execute one migration's statements in order.
 
     Args:
-        conn: A read-write connection to the target database.
-        migration_sql: Contents of ``001_init.sql``.
-
-    Returns:
-        ``InitResult`` describing whether anything was applied.
+        conn: Open read-write connection.
+        migration: Migration to apply.
 
     Raises:
-        SchemaVersionError: If the database already carries a version this build does not
-            support (FR-2). Nothing is modified in that case.
+        ValueError: If the file contains no statements, which would silently skip a version.
     """
-    existing = read_schema_version(conn)
-    if existing is not None:
-        if existing != _MIGRATION_VERSION:
-            raise SchemaVersionError(existing, _MIGRATION_VERSION)
-        return InitResult(applied=False, schema_version=existing)
-
-    statements = split_statements(migration_sql)
+    statements = split_statements(migration.sql)
     if not statements:
-        raise ValueError("migration file is empty; refusing to create an unversioned database")
-
+        raise ValueError(f"migration {migration.name!r} is empty; refusing to skip a version")
     for statement in statements:
         conn.execute(statement)
 
+
+def migrate_database(conn: SqlConnection, migrations: Sequence[Migration]) -> MigrateResult:
+    """Bring a database up to the newest known schema version.
+
+    Args:
+        conn: Read-write connection.
+        migrations: The full chain, sorted or not.
+
+    Returns:
+        Which versions were applied and the resulting version.
+
+    Raises:
+        ValueError: If the chain is empty.
+        SchemaVersionError: If the database is newer than this build, or does not reach the expected
+            version after applying (a migration that forgot its version marker).
+    """
+    if not migrations:
+        raise ValueError("no migrations found; refusing to operate without a schema")
+
+    chain = sorted(migrations, key=lambda migration: migration.version)
+    highest = chain[-1].version
+    expected = str(highest)
+    if expected != SUPPORTED_SCHEMA_VERSION:
+        raise ValueError(
+            f"migration chain reaches v{highest} but the code expects "
+            f"v{SUPPORTED_SCHEMA_VERSION}; they must agree"
+        )
+
+    current = read_schema_version(conn)
+    applied: list[int] = []
+
+    if current is not None:
+        current_version = int(current)
+        if current_version > highest:
+            raise SchemaVersionError(current, expected)
+        pending = [migration for migration in chain if migration.version > current_version]
+    else:
+        pending = list(chain)
+
+    for migration in pending:
+        _apply(conn, migration)
+        applied.append(migration.version)
+
     version = read_schema_version(conn)
-    if version != _MIGRATION_VERSION:
-        raise SchemaVersionError(version, _MIGRATION_VERSION)
-    return InitResult(applied=True, schema_version=version)
+    if version != expected:
+        raise SchemaVersionError(version, expected)
+    return MigrateResult(
+        from_version=current, to_version=version, applied=tuple(applied)
+    )

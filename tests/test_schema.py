@@ -10,6 +10,7 @@ import pytest
 
 from gtaf.application.initialize import SchemaVersionError
 from gtaf.domain.invariants import (
+    SUPPORTED_SCHEMA_VERSION,
     are_caption_indices_contiguous,
     is_finished_run_consistent,
     is_segment_within_bounds,
@@ -44,7 +45,7 @@ def test_all_tables_exist(initialized_db: Path) -> None:
     } <= tables
 
 
-def test_schema_version_is_one(initialized_db: Path) -> None:
+def test_schema_version_is_supported(initialized_db: Path) -> None:
     """FR-1: a fresh database reports the supported version."""
     conn = connect(initialized_db, read_only=True)
     try:
@@ -52,7 +53,7 @@ def test_schema_version_is_one(initialized_db: Path) -> None:
     finally:
         conn.close()
     assert row is not None
-    assert row[0] == "1"
+    assert row[0] == SUPPORTED_SCHEMA_VERSION
 
 
 def test_caption_with_zero_length_is_rejected(initialized_db: Path) -> None:
@@ -107,14 +108,14 @@ def test_unsupported_version_is_refused_on_open(initialized_db: Path) -> None:
     """FR-2: an unknown stored version refuses to open, naming both versions."""
     conn = connect(initialized_db)
     try:
-        conn.execute("UPDATE schema_meta SET value = '2' WHERE key = 'schema_version'")
+        conn.execute("UPDATE schema_meta SET value = '99' WHERE key = 'schema_version'")
     finally:
         conn.close()
 
     with pytest.raises(SchemaVersionError) as excinfo:
         open_database(initialized_db, read_only=True)
-    assert excinfo.value.found == "2"
-    assert excinfo.value.supported == "1"
+    assert excinfo.value.found == "99"
+    assert excinfo.value.supported == SUPPORTED_SCHEMA_VERSION
 
 
 def test_lock_collision_is_translated(monkeypatch, db_file: Path) -> None:
@@ -188,8 +189,8 @@ def test_segment_bounds() -> None:
 
 def test_schema_version_predicate() -> None:
     """INV-1: absent or unknown versions are unsupported."""
-    assert is_supported_schema_version("1") is True
-    assert is_supported_schema_version("2") is False
+    assert is_supported_schema_version(SUPPORTED_SCHEMA_VERSION) is True
+    assert is_supported_schema_version("99") is False
     assert is_supported_schema_version(None) is False
 
 

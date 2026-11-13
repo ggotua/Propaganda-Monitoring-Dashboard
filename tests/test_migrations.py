@@ -1,4 +1,8 @@
-"""Migration and idempotency tests (SPEC-001 §9 cases 1-4, FR-1…FR-3)."""
+"""Migration chain tests (SPEC-001 FR-1…FR-3, SPEC-007 §2).
+
+The chain is what makes a schema change safe on a database that already holds data, so these tests
+cover fresh creation, forward migration from v1, and refusal of a database newer than the code.
+"""
 
 from __future__ import annotations
 
@@ -8,99 +12,125 @@ import pytest
 
 from gtaf.application.initialize import (
     SchemaVersionError,
-    initialize_database,
+    migrate_database,
+    parse_migrations,
     read_schema_version,
     split_statements,
 )
-from gtaf.infrastructure.db import connect, migration_sql_path
+from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
+from gtaf.infrastructure.db import connect, load_migrations
 
 
-def _sql() -> str:
-    """Read the shipped initial migration."""
-    return migration_sql_path().read_text(encoding="utf-8")
-
-
-def test_fresh_database_is_created(db_file: Path) -> None:
-    """Case 1: a new path gets the full schema and version 1."""
+def test_fresh_database_reaches_supported_version(db_file: Path) -> None:
+    """A new path gets the whole chain and ends at the version the code expects."""
+    migrations = load_migrations()
     conn = connect(db_file)
     try:
-        result = initialize_database(conn, _sql())
+        result = migrate_database(conn, migrations)
+        tables = {
+            str(row[0])
+            for row in conn.execute(
+                "SELECT table_name FROM information_schema.tables"
+            ).fetchall()
+        }
     finally:
         conn.close()
-    assert result.applied is True
-    assert result.schema_version == "1"
-    assert db_file.exists()
+
+    assert result.from_version is None
+    assert result.to_version == SUPPORTED_SCHEMA_VERSION
+    assert result.applied == tuple(m.version for m in migrations)
+    assert "topics" in tables
+    assert "res_topics" in tables
 
 
-def test_second_run_is_idempotent(db_file: Path) -> None:
-    """Case 2: re-running applies nothing and changes no row counts (FR-3)."""
+def test_second_run_applies_nothing(db_file: Path) -> None:
+    """Idempotence: the chain is not re-applied."""
+    migrations = load_migrations()
     conn = connect(db_file)
     try:
-        initialize_database(conn, _sql())
-        before = conn.execute("SELECT count(*) FROM channels").fetchone()
-        result = initialize_database(conn, _sql())
-        after = conn.execute("SELECT count(*) FROM channels").fetchone()
+        migrate_database(conn, migrations)
+        again = migrate_database(conn, migrations)
     finally:
         conn.close()
-    assert result.applied is False
-    assert before == after
+
+    assert again.applied == ()
+    assert again.to_version == SUPPORTED_SCHEMA_VERSION
 
 
-def test_version_zero_is_refused(db_file: Path) -> None:
-    """Case 3: an older schema version refuses to proceed and names both versions."""
+def test_v1_database_migrates_forward(db_file: Path) -> None:
+    """A database created by the v1 build gains the topic tables, starting from version 1."""
+    migrations = load_migrations()
+    v1 = next(migration for migration in migrations if migration.version == 1)
+
     conn = connect(db_file)
     try:
-        initialize_database(conn, _sql())
-        conn.execute("UPDATE schema_meta SET value = '0' WHERE key = 'schema_version'")
-        with pytest.raises(SchemaVersionError) as excinfo:
-            initialize_database(conn, _sql())
+        for statement in split_statements(v1.sql):
+            conn.execute(statement)
+        assert read_schema_version(conn) == "1"
+
+        result = migrate_database(conn, migrations)
+        tables = {
+            str(row[0])
+            for row in conn.execute(
+                "SELECT table_name FROM information_schema.tables"
+            ).fetchall()
+        }
     finally:
         conn.close()
-    assert excinfo.value.found == "0"
-    assert excinfo.value.supported == "1"
+
+    assert result.from_version == "1"
+    assert result.to_version == SUPPORTED_SCHEMA_VERSION
+    assert result.applied == (2,)
+    assert "topics" in tables
+    assert "res_topics" in tables
 
 
-def test_version_two_is_refused(db_file: Path) -> None:
-    """Case 4: a newer schema version is refused rather than downgraded."""
+def test_newer_database_is_refused(db_file: Path) -> None:
+    """A database from a future build must not be silently downgraded."""
+    migrations = load_migrations()
     conn = connect(db_file)
     try:
-        initialize_database(conn, _sql())
-        conn.execute("UPDATE schema_meta SET value = '2' WHERE key = 'schema_version'")
+        migrate_database(conn, migrations)
+        conn.execute("UPDATE schema_meta SET value = '99' WHERE key = 'schema_version'")
         with pytest.raises(SchemaVersionError):
-            initialize_database(conn, _sql())
+            migrate_database(conn, migrations)
     finally:
         conn.close()
 
 
-def test_read_schema_version_on_empty_database(db_file: Path) -> None:
-    """A database with no schema_meta table reports no version, rather than an error."""
+def test_chain_must_match_the_code_version(tmp_path: Path) -> None:
+    """A chain that stops short of the code's version is a build error, not a runtime surprise."""
+    migrations = [migration for migration in load_migrations() if migration.version == 1]
+    conn = connect(tmp_path / "short.duckdb")
+    try:
+        with pytest.raises(ValueError, match="must agree"):
+            migrate_database(conn, migrations)
+    finally:
+        conn.close()
+
+
+def test_empty_chain_is_refused(db_file: Path) -> None:
+    """No migrations means no schema; refuse rather than create an unversioned database."""
     conn = connect(db_file)
     try:
-        assert read_schema_version(conn) is None
+        with pytest.raises(ValueError):
+            migrate_database(conn, [])
     finally:
         conn.close()
 
 
-def test_split_statements_drops_blanks() -> None:
-    """The runner splits on semicolons and ignores empty fragments."""
-    assert split_statements("SELECT 1; SELECT 2;;") == ["SELECT 1", "SELECT 2"]
+def test_parse_migrations_sorts_and_rejects_duplicates() -> None:
+    """Order comes from the filename, and a duplicated number is ambiguous, so it fails."""
+    chain = parse_migrations(
+        [("002_b.sql", "SELECT 2;"), ("001_a.sql", "SELECT 1;"), ("notes.txt", "ignored")]
+    )
+    assert [migration.version for migration in chain] == [1, 2]
+
+    with pytest.raises(ValueError, match="duplicate"):
+        parse_migrations([("001_a.sql", ""), ("001_b.sql", "")])
 
 
 def test_split_statements_ignores_semicolons_inside_comments() -> None:
-    """Regression: a comment containing a semicolon must not be cut into a fake statement.
-
-    This is the exact bug that produced 'unterminated quoted identifier' on the first run of
-    the initial migration: the header comment said `splits on ";".`.
-    """
+    """Regression: a comment containing a semicolon must not become a fake statement."""
     sql = '-- a comment with a ; and a "quote\nSELECT 1;\n-- another ; comment\nSELECT 2;'
     assert split_statements(sql) == ["SELECT 1", "SELECT 2"]
-
-
-def test_empty_migration_is_refused(db_file: Path) -> None:
-    """An empty migration must not produce an unversioned database."""
-    conn = connect(db_file)
-    try:
-        with pytest.raises(ValueError, match="empty"):
-            initialize_database(conn, "  \n ; \n")
-    finally:
-        conn.close()

@@ -36,14 +36,13 @@ def db_file(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def initialized_db(db_file: Path) -> Path:
-    """A database with the initial schema applied."""
-    from gtaf.application.initialize import initialize_database
-    from gtaf.infrastructure.db import connect, migration_sql_path
+    """A database migrated to the current schema version."""
+    from gtaf.application.initialize import migrate_database
+    from gtaf.infrastructure.db import connect, load_migrations
 
-    sql = migration_sql_path().read_text(encoding="utf-8")
     conn = connect(db_file)
     try:
-        initialize_database(conn, sql)
+        migrate_database(conn, load_migrations())
     finally:
         conn.close()
     return db_file

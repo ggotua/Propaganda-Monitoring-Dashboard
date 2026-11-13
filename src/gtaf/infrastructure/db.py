@@ -11,7 +11,12 @@ from typing import Final
 
 import duckdb
 
-from gtaf.application.initialize import SchemaVersionError, read_schema_version
+from gtaf.application.initialize import (
+    Migration,
+    SchemaVersionError,
+    parse_migrations,
+    read_schema_version,
+)
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 
 _LOCK_MARKERS: Final[tuple[str, ...]] = (
@@ -92,6 +97,26 @@ def open_database(db_path: Path, *, read_only: bool = True) -> duckdb.DuckDBPyCo
     return conn
 
 
-def migration_sql_path() -> Path:
-    """Return the path of the initial migration shipped with this package."""
-    return Path(__file__).parent / "migrations" / "001_init.sql"
+def migrations_dir() -> Path:
+    """Return the directory holding numbered migration files.
+
+    Returns:
+        The bundled migrations directory.
+    """
+    return Path(__file__).parent / "migrations"
+
+
+def load_migrations() -> list[Migration]:
+    """Read and order the bundled migration chain.
+
+    Returns:
+        Migrations sorted by version.
+
+    Raises:
+        ValueError: On a malformed or duplicated migration filename.
+    """
+    files = [
+        (path.name, path.read_text(encoding="utf-8"))
+        for path in sorted(migrations_dir().glob("*.sql"))
+    ]
+    return parse_migrations(files)

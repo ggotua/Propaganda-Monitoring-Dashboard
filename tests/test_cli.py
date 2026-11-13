@@ -11,6 +11,7 @@ import gtaf.cli as cli
 from gtaf.application.collect import ClientBlockedError, FetchedVideo
 from gtaf.cli import EXIT_CONFIG, EXIT_ERROR, EXIT_OK, EXIT_SCHEMA, main
 from gtaf.domain.collector import UploadRef, VideoMeta
+from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 from gtaf.infrastructure.db import connect
 
 
@@ -21,7 +22,7 @@ def test_init_db_creates_and_reports(tmp_path: Path, capsys) -> None:
     captured = capsys.readouterr()
     assert code == EXIT_OK
     assert db_path.exists()
-    assert "schema_version=1" in captured.out
+    assert f"schema_version={SUPPORTED_SCHEMA_VERSION}" in captured.out
 
 
 def test_init_db_twice_is_idempotent(tmp_path: Path, capsys) -> None:
@@ -37,7 +38,7 @@ def test_init_db_twice_is_idempotent(tmp_path: Path, capsys) -> None:
 def test_schema_version_prints_version(initialized_db: Path, capsys) -> None:
     """FR-2: the version can be read back from a command line."""
     assert main(["schema-version", str(initialized_db)]) == EXIT_OK
-    assert capsys.readouterr().out.strip() == "1"
+    assert capsys.readouterr().out.strip() == SUPPORTED_SCHEMA_VERSION
 
 
 def test_schema_version_on_missing_database(tmp_path: Path) -> None:

@@ -24,7 +24,11 @@ from pathlib import Path
 
 from gtaf.application.collect import ClientBlockedError, CollectPlan, run_collection
 from gtaf.application.config import ConfigError
-from gtaf.application.initialize import SchemaVersionError, initialize_database, read_schema_version
+from gtaf.application.initialize import (
+    SchemaVersionError,
+    migrate_database,
+    read_schema_version,
+)
 from gtaf.application.segment import segment_video
 from gtaf.application.text import sentences_for_video
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
@@ -35,7 +39,7 @@ from gtaf.infrastructure.db import (
     DatabaseLockedError,
     DatabaseNotFoundError,
     connect,
-    migration_sql_path,
+    load_migrations,
     open_database,
 )
 from gtaf.infrastructure.logging_setup import log_event, setup_logging
@@ -115,24 +119,36 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _cmd_init_db(path: Path, log_dir: Path) -> int:
-    """Create the schema if absent; verify it if present (FR-1, FR-2, FR-3)."""
+    """Create the schema if absent, or migrate it forward (FR-1, FR-2, FR-3)."""
     logger = setup_logging(log_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    sql = migration_sql_path().read_text(encoding="utf-8")
 
     conn = connect(path, read_only=False)
     try:
-        result = initialize_database(conn, sql)
+        result = migrate_database(conn, load_migrations())
     finally:
         conn.close()
 
     if result.applied:
-        log_event(logger, 20, "db.created", path=str(path), schema_version=result.schema_version)
-        print(f"created {path} (schema_version={result.schema_version})")
+        action = "created" if result.from_version is None else "migrated"
+        log_event(
+            logger,
+            20,
+            "db.migrated",
+            path=str(path),
+            from_version=result.from_version,
+            to_version=result.to_version,
+            applied=list(result.applied),
+        )
+        print(
+            f"{action} {path} (schema_version={result.to_version}, "
+            f"applied {len(result.applied)} migration(s))"
+        )
     else:
-        log_event(logger, 20, "db.opened", path=str(path), read_only=False,
-                  schema_version=result.schema_version)
-        print(f"{path} already at schema_version={result.schema_version}; nothing to do")
+        log_event(
+            logger, 20, "db.opened", path=str(path), schema_version=result.to_version
+        )
+        print(f"{path} already at schema_version={result.to_version}; nothing to do")
     return EXIT_OK
 
 
