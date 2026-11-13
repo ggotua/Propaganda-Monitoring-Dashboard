@@ -37,11 +37,14 @@ import sys
 from dataclasses import dataclass
 
 # Ordered by dependency depth: a failure here usually explains the ones after it.
+# Entries are IMPORT names, which are not always distribution names: `umap-learn` imports as
+# `umap`. Getting that wrong produced a false "missing" verdict the first time this ran — the exact
+# confusion between "absent" and "incompatible" that this script exists to prevent.
 REQUIRED_CHAIN: tuple[tuple[str, str], ...] = (
     ("numpy", "numerical base"),
     ("numba", "JIT compiler UMAP and HDBSCAN rely on"),
     ("llvmlite", "numba's LLVM binding - the usual blocker on a new interpreter"),
-    ("umap_learn", "UMAP, imported as umap"),
+    ("umap", "UMAP (distribution: umap-learn)"),
     ("hdbscan", "density clustering"),
     ("sklearn", "scikit-learn, HDBSCAN's modern home"),
     ("sentence_transformers", "embedding models"),

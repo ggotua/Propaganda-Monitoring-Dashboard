@@ -44,8 +44,13 @@ segments, no topics, no report.
 hours** of collection for all six. `--listing-limit 300` silently truncated this run to nine days —
 a coverage parameter I had treated as a safety valve.
 
-One environment question remains open: whether the CPU embedding chain installs on Python 3.13.1
-(D-007), which is *unproven* rather than failed.
+One environment question is now settled: **the analysis stays on Python 3.13.1** (D-019) — the whole
+BERTopic/UMAP/numba chain imports cleanly there, so the fallback to 3.12 is not needed.
+
+**Collection is still blocked by the caption endpoint.** A probe two hours after the first 429 was
+refused again, so the quota is hours-scale rather than minutes. At ~250 payload downloads per window
+the 7,000-video backfill is a **multi-week** operation, not a multi-day one — which changes the plan
+more than any code written this month.
 
 ### What feasibility established
 
@@ -104,7 +109,8 @@ were taken during implementation.
 | SPEC-002 | **Approved and implemented** — collector works live; 90 tests; evidence in the spec |
 | SPEC-003 | **Approved and implemented** — cues → sentences, 122 tests, spot-checked on a real bulletin |
 | SPEC-004 | **Approved and implemented** — 2,355 fixed-window segments over 262 videos; temporary by design (SPEC-006 replaces it) |
-| D-007 interpreter chain | **Open, unproven** — `spikes/bertopic_chain_check.py` exits 3 (absent ≠ incompatible) |
+| D-007 interpreter chain | **CLOSED 2026-11-13** — full chain imports on Python 3.13.1 (D-019). No fallback to 3.12 |
+| Embedding viability | **Validated on Georgian** — 384-dim, similar pair 0.63 vs unrelated 0.25 (`spikes/embedding_smoke.py`) |
 
 ## Waiting on the physical world
 

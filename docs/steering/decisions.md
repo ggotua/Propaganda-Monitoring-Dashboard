@@ -592,3 +592,33 @@ Consequences: the full backfill is a multi-day background operation, not a 13-ho
 figures must state when collection was rate-limited, because a blocked run leaves a window
 incomplete. Revisit if: a measured pattern shows the limit is per-hour rather than per-session, in
 which case batches can be scheduled accordingly.
+
+---
+
+## D-019: D-007 resolved — the analysis stays on Python 3.13.1
+
+Status: Accepted (2026-11-13). Measurement, not opinion: `spikes/bertopic_chain_check.py` exits 0.
+
+Context: D-007 set a two-hour box on 3.13.1 with a pre-approved fallback to 3.12, because
+BERTopic's chain (UMAP → numba → llvmlite, HDBSCAN) is the part of the stack most likely to lag a new
+interpreter. D-011 moved that check out of SPEC-001 into a spike. The chain was then installed with
+`uv`: torch 2.15.0, transformers 5.22.2, sentence-transformers 6.3.0, bertopic 0.17.4, umap-learn
+0.6.0, hdbscan 0.8.44, numba 0.68.1, llvmlite 0.50.0, scikit-learn 1.9.1, numpy 2.5.4.
+
+Result: **every module imports cleanly on 3.13.1.** D-007's fallback branch is not triggered and the
+project stays on the installed interpreter.
+
+Rejected:
+- **Falling back to 3.12 anyway "to be safe"** — would pay a second interpreter, a second environment
+  and a second lockfile to dodge a risk that has now been measured away.
+- **Declaring success from the install exiting 0.** Installation and importability are different
+  claims; the check imports each module in a fresh process.
+
+Consequences: one interpreter, one environment, one lockfile. The ML stack now lives in the same venv
+as the foundation, which is pinned in `requirements.lock`. Revisit if: a future dependency forces a
+downgrade — and note that this chain working today is not a promise about the next release.
+
+**A lesson recorded with the result:** the first run of the check reported `umap_learn` missing and
+would have triggered a needless downgrade. The distribution is `umap-learn` but the import is `umap`.
+The diagnostic had the false-negative bug it was written to prevent — "absent" read as
+"incompatible". Fixed, and the module list now carries the distribution-vs-import note.

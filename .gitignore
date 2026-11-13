@@ -33,6 +33,7 @@ htmlcov/
 
 # --- Local scratch -------------------------------------------------------
 .tmp/
+.hf-cache/
 pip-build-tracker-*/
 pip-install-*/
 pip-ephem-wheel-cache-*/
