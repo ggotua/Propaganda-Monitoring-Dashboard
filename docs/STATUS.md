@@ -111,6 +111,7 @@ were taken during implementation.
 | SPEC-004 | **Approved and implemented** — 2,355 fixed-window segments over 262 videos; temporary by design (SPEC-006 replaces it) |
 | Schema | **v2** — migration chain in place; `topics`/`res_topics` added; the live database migrated in place with all 263 videos and 2,355 segments intact |
 | SPEC-007 | **Approved and implemented** — 30 topics over 2,355 segments, **38.6 % outliers**, mpnet chosen on measurement (D-020) |
+| SPEC-008 | **Approved and implemented** — Streamlit workbench renders the real corpus with the outlier rate on the page; 141 tests |
 | D-007 interpreter chain | **CLOSED 2026-11-13** — full chain imports on Python 3.13.1 (D-019). No fallback to 3.12 |
 | Embedding viability | **Validated on Georgian** — 384-dim, similar pair 0.63 vs unrelated 0.25 (`spikes/embedding_smoke.py`) |
 
