@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import platform
 import sys
 from collections.abc import Sequence
@@ -30,6 +31,12 @@ from gtaf.application.initialize import (
     read_schema_version,
 )
 from gtaf.application.report import build_report
+from gtaf.application.schedule import (
+    DEFAULT_BATCH_LIMIT,
+    DEFAULT_DAILY_BUDGET,
+    next_batch,
+    recent_runs,
+)
 from gtaf.application.segment import segment_video
 from gtaf.application.text import sentences_for_video
 from gtaf.application.topics import InsufficientDataError, run_topics
@@ -137,6 +144,17 @@ def _build_parser() -> argparse.ArgumentParser:
     report.add_argument("--channel", default=None, help="restrict to one channel_id")
     report.add_argument("--since", default=None, help="earliest broadcast date (ISO)")
     report.add_argument("--until", default=None, help="latest broadcast date (ISO)")
+
+    next_cmd = sub.add_parser("next", help="decide what to collect next (read-only)")
+    next_cmd.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    next_cmd.add_argument("--config-dir", type=Path, default=Path("config"))
+    next_cmd.add_argument("--budget", type=int, default=DEFAULT_DAILY_BUDGET)
+    next_cmd.add_argument("--batch-limit", type=int, default=DEFAULT_BATCH_LIMIT)
+    next_cmd.add_argument("--json", action="store_true", help="machine-readable output")
+
+    runs = sub.add_parser("runs", help="show recent runs (read-only)")
+    runs.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    runs.add_argument("--limit", type=int, default=20)
 
     return parser
 
@@ -546,6 +564,90 @@ def _cmd_report(
     return EXIT_OK
 
 
+def _cmd_next(
+    *, db_path: Path, config_dir: Path, budget: int, batch_limit: int, as_json: bool
+) -> int:
+    """Decide whether to collect now, from which channel, and how many (SPEC-010 §2).
+
+    Args:
+        db_path: Database file, opened read-only.
+        config_dir: Corpus configuration, the source of the channel population.
+        budget: Daily video budget.
+        batch_limit: Preferred batch size.
+        as_json: Emit a JSON object for the scheduled script.
+
+    Returns:
+        Process exit code: always 0 unless the database or config cannot be read.
+    """
+    bundle = load_configuration(config_dir)
+    configured = [
+        (channel.channel_id, channel.name_en) for channel in bundle.channels if channel.active
+    ]
+    conn = open_database(db_path, read_only=True)
+    try:
+        decision = next_batch(conn, configured, budget=budget, batch_limit=batch_limit)
+    finally:
+        conn.close()
+
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "collect": decision.collect,
+                    "channel_id": decision.channel_id,
+                    "limit": decision.limit,
+                    "collected_today": decision.collected_today,
+                    "budget": decision.budget,
+                    "reason": decision.reason,
+                }
+            )
+        )
+        return EXIT_OK
+
+    print("collect" if decision.collect else "wait")
+    print(f"reason: {decision.reason}")
+    if decision.collect:
+        print(f"channel: {decision.channel_id}  limit: {decision.limit}")
+        print(
+            f"run: gtaf collect --channel {decision.channel_id} "
+            f"--limit {decision.limit} --skip-existing"
+        )
+    return EXIT_OK
+
+
+def _cmd_runs(*, db_path: Path, limit: int) -> int:
+    """Print recent runs, newest first (SPEC-010 §4).
+
+    Args:
+        db_path: Database file, opened read-only.
+        limit: Maximum rows.
+
+    Returns:
+        Process exit code.
+    """
+    conn = open_database(db_path, read_only=True)
+    try:
+        rows = recent_runs(conn, limit=limit)
+    finally:
+        conn.close()
+
+    if not rows:
+        print("no runs recorded")
+        return EXIT_OK
+
+    print(f"{'started':<20}{'stage':<10}{'status':<9}{'items':>6}  run")
+    for run_id, stage, status, started_at, n_items, watermark, error in rows:
+        started = str(started_at)[:19]
+        marker = "!" if status in {"failed", "blocked"} else " "
+        items = n_items if isinstance(n_items, int) else int(str(n_items))
+        print(f"{started:<20}{stage!s:<10}{status!s:<9}{items:>6} {marker} {str(run_id)[:8]}")
+        if error:
+            print(f"{'':<48}{str(error)[:90]}")
+        if watermark:
+            print(f"{'':<48}watermark {watermark}")
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -602,6 +704,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 since=args.since,
                 until=args.until,
             )
+        if args.command == "next":
+            return _cmd_next(
+                db_path=args.db,
+                config_dir=args.config_dir,
+                budget=args.budget,
+                batch_limit=args.batch_limit,
+                as_json=args.json,
+            )
+        if args.command == "runs":
+            return _cmd_runs(db_path=args.db, limit=args.limit)
         if args.command == "collect":
             return _cmd_collect(                config_dir=args.config_dir,
                 db_path=args.db,
