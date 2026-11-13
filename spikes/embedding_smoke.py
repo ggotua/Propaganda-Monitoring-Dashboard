@@ -17,7 +17,8 @@ from pathlib import Path
 # files are discoverable rather than hidden in a user profile.
 os.environ.setdefault("HF_HOME", str(Path(__file__).resolve().parents[1] / ".hf-cache"))
 
-from sentence_transformers import SentenceTransformer  # noqa: E402 - must follow HF_HOME
+# Must follow the HF_HOME assignment: the import resolves its cache directory at import time.
+from sentence_transformers import SentenceTransformer
 
 MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
