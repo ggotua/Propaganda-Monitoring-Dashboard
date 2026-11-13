@@ -1,7 +1,7 @@
 """Workbench render test (SPEC-008 §7).
 
-`AppTest` runs the actual page script headlessly, so this asserts the UI renders with real data rather
-than merely importing. The database is a fixture, injected through `GTAF_DB`.
+`AppTest` runs the actual page script headlessly, so this asserts the UI renders with real data
+rather than merely importing. The database is a fixture, injected through `GTAF_DB`.
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pytest
-
 from streamlit.testing.v1 import AppTest
 
 from gtaf.infrastructure.db import connect
