@@ -7,6 +7,11 @@ Sessions: (1) kickoff · (2) architecture decisions · (3) SPEC-001 written · (
 
 ## Where the project stands
 
+**A full backfill is running as this file is written** (started 2026-11-13 06:27, all six channels,
+`--listing-limit 1500 --skip-existing`, sequential, ~13 h expected). Check `.tmp/backfill_all.log`
+for per-channel START/END lines; the job stops the whole sequence if any channel returns exit 5
+(blocked). Until it finishes, the numbers below are the Imedi-only first pass.
+
 **Foundation and collector both exist and are verified.** SPEC-001 gives the schema, config, logging
 and CLI; SPEC-002 gives a working collector — 86 tests, ruff/mypy clean, and a live run that stored
 3 videos, 875 caption cues and 3 immutable raw payloads. A window has been collected end to end for
@@ -128,7 +133,10 @@ These cost hours this session and will cost them again if forgotten:
 
 1. **SPEC-003 (normaliser)** on a 30-video sample: merge `json3` cues into timestamped sentences,
    strip ASR artefacts, and — the part nothing has measured yet — **assess ASR quality** so the NER
-   and attribution risks become evidence rather than a warning.
+   and attribution risks become evidence rather than a warning. A first qualitative read of five
+   transcripts is in [`ASR-QUALITY.md`](ASR-QUALITY.md): it found `>>` speaker-turn markers (which
+   softens risk R1 from "no speaker information" to "no speaker identities"), bracketed non-speech
+   events, and occasional foreign-script contamination.
 2. **Extend the backfill, one channel at a time**, with `--listing-limit 1500 --skip-existing`
    (300 was too small — it covered 9 of 43 days). Expect ~13 h total, so it is an overnight job and
    must be chunked; collection is exclusive, so nothing else may open the database while it runs
