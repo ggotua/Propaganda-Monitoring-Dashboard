@@ -150,6 +150,55 @@ def test_programme_for_unknown_channel_is_rejected_by_the_database(initialized_d
     assert channels is not None and channels[0] == 1
 
 
+def test_replace_segments_is_idempotent(initialized_db: Path) -> None:
+    """FR-7: re-running segmentation leaves the row count unchanged."""
+    from gtaf.domain.segment import SegmentDraft
+
+    conn = connect(initialized_db)
+    try:
+        repo = DuckDBRepository(conn)
+        _seed(repo)
+        repo.upsert_video(_video(), (CaptionCue(0, 0.0, 2.0, "a"),))
+        drafts = (
+            SegmentDraft(segment_id="vid1:00000000", start_s=0.0, end_s=60.0, text="a"),
+            SegmentDraft(segment_id="vid1:00060000", start_s=60.0, end_s=120.0, text="b"),
+        )
+        first = repo.replace_segments("vid1", drafts, "fixed", "1")
+        second = repo.replace_segments("vid1", drafts, "fixed", "1")
+        rows = conn.execute("SELECT count(*) FROM segments").fetchone()
+    finally:
+        conn.close()
+    assert (first, second) == (2, 2)
+    assert rows is not None and rows[0] == 2
+
+
+def test_segments_of_another_method_are_preserved(initialized_db: Path) -> None:
+    """A temporary segmenter must not destroy real segmentation when re-run."""
+    from gtaf.domain.segment import SegmentDraft
+
+    conn = connect(initialized_db)
+    try:
+        repo = DuckDBRepository(conn)
+        _seed(repo)
+        repo.upsert_video(_video(), (CaptionCue(0, 0.0, 2.0, "a"),))
+        repo.replace_segments(
+            "vid1",
+            (SegmentDraft(segment_id="vid1:llm:1", start_s=0.0, end_s=30.0, text="a"),),
+            "llm",
+            "1",
+        )
+        repo.replace_segments(
+            "vid1",
+            (SegmentDraft(segment_id="vid1:fixed:1", start_s=0.0, end_s=90.0, text="a"),),
+            "fixed",
+            "1",
+        )
+        methods = conn.execute("SELECT seg_method FROM segments ORDER BY seg_method").fetchall()
+    finally:
+        conn.close()
+    assert [row[0] for row in methods] == ["fixed", "llm"]
+
+
 def test_has_video_reports_presence(initialized_db: Path) -> None:
     """The resumability check must not report a stored video as absent."""
     conn = connect(initialized_db)

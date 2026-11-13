@@ -15,6 +15,7 @@ import duckdb
 
 from gtaf.domain.collector import CaptionCue
 from gtaf.domain.models import Channel, Programme, Video
+from gtaf.domain.segment import SegmentDraft
 
 
 def _utc_now() -> datetime:
@@ -294,6 +295,79 @@ class DuckDBRepository:
             )
             for row in rows
         )
+
+    def list_video_ids(self) -> tuple[str, ...]:
+        """Return every stored video id.
+
+        Returns:
+            Video ids in publication order, newest first.
+        """
+        rows = self._conn.execute(
+            "SELECT video_id FROM videos ORDER BY published_at DESC"
+        ).fetchall()
+        return tuple(str(row[0]) for row in rows)
+
+    def replace_segments(
+        self,
+        video_id: str,
+        drafts: Sequence[SegmentDraft],
+        seg_method: str,
+        seg_version: str,
+    ) -> int:
+        """Replace one video's segments for a given method.
+
+        Args:
+            video_id: Owning video.
+            drafts: Segments to insert; an empty sequence clears existing rows for the method.
+            seg_method: Method name, e.g. ``fixed``.
+            seg_version: Version of the method's rules.
+
+        Returns:
+            Number of rows written.
+
+        Notes:
+            Two transactions, for the same DuckDB reason as ``upsert_video`` (D-013): the delete is
+            committed before the insert so a constraint check never sees a half-replaced set. Only
+            rows with the same ``seg_method`` are removed, so a future SPEC-006 segmentation
+            survives a re-run of this temporary one.
+        """
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            self._conn.execute(
+                "DELETE FROM segments WHERE video_id = ? AND seg_method = ?",
+                [video_id, seg_method],
+            )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+
+        if not drafts:
+            return 0
+
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            self._conn.executemany(
+                "INSERT INTO segments (segment_id, video_id, start_s, end_s, text, title_ka, "
+                "title_en, seg_method, seg_version) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)",
+                [
+                    (
+                        draft.segment_id,
+                        video_id,
+                        draft.start_s,
+                        draft.end_s,
+                        draft.text,
+                        seg_method,
+                        seg_version,
+                    )
+                    for draft in drafts
+                ],
+            )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+        return len(drafts)
 
     def start_run(self, stage: str, params_json: str) -> str:
         """Open a run row.

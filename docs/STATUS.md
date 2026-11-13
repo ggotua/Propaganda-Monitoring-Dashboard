@@ -7,15 +7,16 @@ Sessions: (1) kickoff · (2) architecture decisions · (3) SPEC-001 written · (
 
 ## Where the project stands
 
-**Collection was halted by a rate limit, and the normaliser is built.** The second backfill reached
-262 videos before the caption endpoint returned `HTTP Error 429` for every request; the run is
-stopped and the cause is fixed (D-018 — a 429 on a caption payload now stops the run instead of being
-mistaken for a per-video skip). SPEC-003 is implemented: cues become timestamped sentences with turn
-boundaries and quality flags, verified on a real 31-minute bulletin.
+**Collection was halted by a rate limit; the pipeline now runs collect → normalise → segment.** The
+second backfill reached 262 videos before the caption endpoint returned `HTTP Error 429` for every
+request. The cause is fixed (D-018 — a 429 on a caption payload now stops the run instead of being
+mistaken for a per-video skip), and a verification run confirmed it: exit 5 on the first 429, one
+event, instead of 119. SPEC-003 and SPEC-004 are both implemented.
 
-**Current corpus: 262 videos, 9 days (2026-11-04 … 2026-11-12), 87k+ cues, all auto `ka`.** The
-backfill to 2026-10-01 is a multi-day operation in paced batches, not a single run, because the
-caption endpoint's per-session budget is ~260 payload downloads.
+**Current corpus: 262 videos, 9 days (2026-11-04 … 2026-11-12), ~87k cues, all auto `ka`,
+2,355 segments covering 62.4 hours of broadcast.** The backfill to 2026-10-01 is a multi-day
+operation in paced batches, because the caption endpoint's per-session budget is ~260 payload
+downloads.
 
 **Foundation and collector both exist and are verified.** SPEC-001 gives the schema, config, logging
 and CLI; SPEC-002 gives a working collector — 86 tests, ruff/mypy clean, and a live run that stored
@@ -101,7 +102,8 @@ were taken during implementation.
 | Remote | **Closed** — pushed, verified against the remote |
 | SPEC-001 | **Approved and implemented** — evidence in the spec's Implementation Status |
 | SPEC-002 | **Approved and implemented** — collector works live; 90 tests; evidence in the spec |
-| SPEC-003 | **Approved and implemented** — cues → sentences, 111 tests, spot-checked on a real bulletin |
+| SPEC-003 | **Approved and implemented** — cues → sentences, 122 tests, spot-checked on a real bulletin |
+| SPEC-004 | **Approved and implemented** — 2,355 fixed-window segments over 262 videos; temporary by design (SPEC-006 replaces it) |
 | D-007 interpreter chain | **Open, unproven** — `spikes/bertopic_chain_check.py` exits 3 (absent ≠ incompatible) |
 
 ## Waiting on the physical world

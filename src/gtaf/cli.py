@@ -25,9 +25,11 @@ from pathlib import Path
 from gtaf.application.collect import ClientBlockedError, CollectPlan, run_collection
 from gtaf.application.config import ConfigError
 from gtaf.application.initialize import SchemaVersionError, initialize_database, read_schema_version
+from gtaf.application.segment import segment_video
 from gtaf.application.text import sentences_for_video
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 from gtaf.domain.models import Programme
+from gtaf.domain.segment import MAX_S, MIN_S, TARGET_S
 from gtaf.infrastructure.config_io import load_configuration
 from gtaf.infrastructure.db import (
     DatabaseLockedError,
@@ -100,6 +102,14 @@ def _build_parser() -> argparse.ArgumentParser:
     text.add_argument("--video-id", required=True, help="YouTube video id")
     text.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
     text.add_argument("--limit", type=int, default=40, help="sentences to print (default: 40)")
+
+    segment = sub.add_parser("segment", help="segment one video or all videos (fixed window)")
+    segment.add_argument("--video-id", default=None, help="segment one video")
+    segment.add_argument("--all", action="store_true", help="segment every stored video")
+    segment.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    segment.add_argument("--target", type=float, default=TARGET_S, help="target window seconds")
+    segment.add_argument("--max", type=float, default=MAX_S, help="hard ceiling seconds")
+    segment.add_argument("--min", type=float, default=MIN_S, help="minimum trailing remainder")
 
     return parser
 
@@ -347,6 +357,59 @@ def _cmd_text(video_id: str, db_path: Path, limit: int) -> int:
     return EXIT_OK
 
 
+def _cmd_segment(
+    *,
+    db_path: Path,
+    video_id: str | None,
+    segment_all: bool,
+    target_s: float,
+    max_s: float,
+    min_s: float,
+    log_dir: Path,
+) -> int:
+    """Segment one video or all videos with the fixed-window method (SPEC-004).
+
+    Args:
+        db_path: Database file, opened read-write.
+        video_id: Single video to segment, or None.
+        segment_all: Segment every stored video.
+        target_s: Window length to aim for.
+        max_s: Hard ceiling per segment.
+        min_s: Minimum trailing remainder.
+        log_dir: Directory for the JSON log.
+
+    Returns:
+        Process exit code.
+    """
+    if not video_id and not segment_all:
+        print("specify --video-id or --all", file=sys.stderr)
+        return EXIT_CONFIG
+
+    logger = setup_logging(log_dir)
+    conn = connect(db_path, read_only=False)
+    try:
+        version = read_schema_version(conn)
+        if version != SUPPORTED_SCHEMA_VERSION:
+            raise SchemaVersionError(version, SUPPORTED_SCHEMA_VERSION)
+        repo = DuckDBRepository(conn)
+        targets = (video_id,) if video_id else repo.list_video_ids()
+        total = 0
+        empty = 0
+        for target in targets:
+            written = segment_video(
+                target, repo, repo, target_s=target_s, max_s=max_s, min_s=min_s
+            )
+            total += written
+            if written == 0:
+                empty += 1
+        log_event(logger, 20, "segment.done", videos=len(targets), segments=total, empty=empty)
+    finally:
+        conn.close()
+
+    print(f"segmented {len(targets)} video(s): {total} segments, {empty} with none")
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -377,6 +440,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_doctor(args.json, args.data_dir)
         if args.command == "text":
             return _cmd_text(args.video_id, args.db, args.limit)
+        if args.command == "segment":
+            return _cmd_segment(
+                db_path=args.db,
+                video_id=args.video_id,
+                segment_all=args.all,
+                target_s=args.target,
+                max_s=args.max,
+                min_s=args.min,
+                log_dir=Path("logs"),
+            )
         if args.command == "collect":
             return _cmd_collect(                config_dir=args.config_dir,
                 db_path=args.db,
