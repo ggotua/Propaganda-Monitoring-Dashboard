@@ -1,9 +1,22 @@
 # STATUS — GTAF
 
-Last updated: 2026-11-13. Branch: `spec-000-kickoff`, tracking `origin`
-(`github.com/ggotua/Propaganda-Monitoring-Dashboard`).
+Last updated: 2026-11-13. Branch: **`main`** (trunk, tagged `v0.1.0`), tracking
+`origin` (`github.com/ggotua/Propaganda-Monitoring-Dashboard`).
 Sessions: (1) kickoff · (2) architecture decisions · (3) SPEC-001 written · (4) SPEC-001 implemented ·
 (5) feasibility measured · (6) SPEC-002 implemented.
+
+## API keys — where they go, and how they must not be stored
+
+Keys belong in **`D:\Data analysis\Propaganda Dashboard2\.env`**, which is gitignored and denied to this
+harness (it cannot be read by me, by design).
+
+`.env.example` is the **tracked** template and must contain empty values only. On 2026-11-13 a live key
+was pasted into `.env.example` — a file that git tracks — and was one `git add -A` from being pushed. It
+never entered a commit and never reached the remote (`git log --all -S` is clean), but the file was
+restored and a **test now fails if any value appears in the template** (`tests/test_env_template.py`).
+
+**Rotate that key anyway.** It was written into a tracked working file and appeared in this session's
+transcript; both count as exposure. Create `.env`, paste the new key there, and leave the template alone.
 
 ## Where the project stands
 
@@ -114,6 +127,8 @@ were taken during implementation.
 | SPEC-008 | **Approved and implemented** — Streamlit workbench renders the real corpus with the outlier rate on the page; 141 tests |
 | SPEC-009 | **Approved and implemented** — self-contained 4.8 MB HTML report, no external references, outlier rate stated three times (D-021: no Quarto) |
 | SPEC-010 | **Approved and implemented** — paced `next` decision, `runs` history, Task Scheduler script; picks Formula next (0 videos) |
+| Analytical policy | **In force** (D-023) — seven numeric publication gates in [`ANALYTICAL-POLICY.md`](ANALYTICAL-POLICY.md); no substantive claim passes them yet |
+| Trunk & release | **`main` created, tagged `v0.1.0`** (D-022); future work on per-SPEC branches merged to `main` |
 | D-007 interpreter chain | **CLOSED 2026-11-13** — full chain imports on Python 3.13.1 (D-019). No fallback to 3.12 |
 | Embedding viability | **Validated on Georgian** — 384-dim, similar pair 0.63 vs unrelated 0.25 (`spikes/embedding_smoke.py`) |
 

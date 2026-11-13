@@ -688,3 +688,69 @@ without a network.
 **Revisit if**: the report needs multi-page structure, PDF output, a design system, or per-section
 authorship — that is the point where Quarto's install cost is repaid. Recorded in SPEC-009 §2 so the
 deviation is discoverable from the spec, not only from this log.
+
+---
+
+## D-022: `main` is the trunk; work happens on SPEC branches; releases are tagged
+
+Status: Accepted (2026-11-13). Agent decision under the standing delegation, executed at George's
+request ("merge to main").
+
+Context: all work since kickoff lived on `spec-000-kickoff`, which was never meant to be a permanent
+branch — it existed because there was no repository history at all. Leaving it as the only branch means
+no stable reference point, nothing to tag, and a future session unable to tell what is shipped from what
+is in progress.
+
+Decision:
+1. **`main` is the trunk**, created at the shipped state and pushed.
+2. **Each new SPEC gets a short-lived branch** (`spec-005-llm-gateway`), merged to `main` when its tests
+   and gate are green. The workflow asks for this at Structured tier and it costs one command per spec.
+3. **Every shipped increment is annotated-tagged**: `v0.1.0` marks the first working pipeline
+   (collect → normalise → segment → topics → workbench → report).
+4. `spec-000-kickoff` stays as history; it is not deleted and not force-pushed.
+
+Rejected:
+- **Continue committing to `spec-000-kickoff` forever** — a branch named after a finished task as the
+  trunk is how "what is deployed?" becomes unanswerable.
+- **Rebase the whole history onto `main`** — rewrites shared history for cosmetic gain.
+- **Git-flow with `develop`/`release`** — two permanent branches for a solo project is ceremony with no
+  reviewer to justify it.
+
+Consequences: one extra branch operation per spec, and discipline in keeping `main` green. The tag gives
+a reproducible reference for the report format and the database schema version (v2) shipped together.
+Revisit if: a second contributor appears (then PR review on `main` becomes load-bearing), or the tag
+scheme needs semantic meaning beyond `v0.N.0`.
+
+---
+
+## D-023: Publication gates — a number may be published only when it can bear the claim
+
+Status: Accepted (2026-11-13). Agent decision as the project's analyst.
+
+Context: the pipeline now emits plausible figures from a corpus of 263 videos, one channel, eleven days,
+with 38.6 % of segments unclassified. Every one of those properties is a reason a figure could be
+technically correct and analytically false. Written warnings do not survive deadlines; thresholds do.
+
+Decision: adopt `docs/ANALYTICAL-POLICY.md` as a **binding** gate set. Seven numeric gates, of which the
+load-bearing ones are:
+
+- **G-1** a topic share is published only with ≥ 30 segments in the cell (else counts, not percentages);
+- **G-2** a topic ranking only when the outlier rate ≤ 50 %;
+- **G-3** two channels may be compared only when each has ≥ 14 days and ≥ 100 videos;
+- **G-4** a trend only with ≥ 3 complete bimonthly windows under one method version;
+- **G-5** no actor may be named until NER agreement ≥ 0.80 on a 50-mention check **and** measured WER
+  ≤ 30 %.
+
+Rejected:
+- **Vague caution ("be careful with small samples")** — unenforceable, and the person applying it is the
+  person with an incentive to publish.
+- **Statistical significance testing on a census of broadcasts** — the corpus is the population of what
+  aired, not a sample from it; the real uncertainty is caption coverage and classification error, both
+  of which are reported, not tested away.
+- **A single global "quality score"** — hides which specific claim is unsupported.
+
+Consequences: some numbers that the pipeline can compute may not be published, and the reason will be a
+gate rather than a judgement call. Every published figure must carry denominator, outlier rate, date
+span, channel count and method version, which makes one-line captions longer and honest. Gates change
+only through a new decision entry, never by editing the policy quietly. Revisit if: the corpus reaches
+6 channels × 90 days, at which point G-3 and G-4 become satisfiable rather than aspirational.
