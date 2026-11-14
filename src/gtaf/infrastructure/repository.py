@@ -370,6 +370,75 @@ class DuckDBRepository:
             raise
         return len(drafts)
 
+    def get_cached_call(self, key: str) -> str | None:
+        """Return the stored payload for a call hash.
+
+        Args:
+            key: Call hash.
+
+        Returns:
+            The stored JSON payload, or None when the call has not been made.
+        """
+        row = self._conn.execute(
+            "SELECT response_json FROM llm_calls WHERE call_hash = ?", [key]
+        ).fetchone()
+        return str(row[0]) if row else None
+
+    def store_call(
+        self,
+        key: str,
+        *,
+        provider: str,
+        model: str,
+        prompt_version: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float,
+        payload_json: str,
+    ) -> None:
+        """Persist one LLM call.
+
+        Args:
+            key: Call hash (primary key, so a repeated call is cached rather than duplicated).
+            provider: Provider key.
+            model: Model id.
+            prompt_version: Prompt template version.
+            input_tokens: Prompt tokens.
+            output_tokens: Completion tokens.
+            cost_usd: Computed cost.
+            payload_json: Response payload including reasoning-token totals.
+        """
+        self._conn.execute(
+            "INSERT INTO llm_calls (call_hash, provider, model, prompt_version, input_tokens, "
+            "output_tokens, cost_usd, response_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                key,
+                provider,
+                model,
+                prompt_version,
+                input_tokens,
+                output_tokens,
+                cost_usd,
+                payload_json,
+                _utc_now(),
+            ],
+        )
+
+    def spent_between(self, start: datetime) -> float:
+        """Return total LLM cost recorded since an instant.
+
+        Args:
+            start: Inclusive lower bound, naive UTC.
+
+        Returns:
+            Sum of `cost_usd`; zero when nothing was spent.
+        """
+        row = self._conn.execute(
+            "SELECT coalesce(sum(cost_usd), 0) FROM llm_calls WHERE created_at >= ?", [start]
+        ).fetchone()
+        return float(row[0]) if row else 0.0
+
     def list_segments(self) -> tuple[tuple[str, str], ...]:
         """Return every stored segment as ``(segment_id, text)``.
 

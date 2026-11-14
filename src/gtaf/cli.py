@@ -20,7 +20,8 @@ import json
 import platform
 import sys
 from collections.abc import Sequence
-from datetime import date
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from gtaf.application.collect import ClientBlockedError, CollectPlan, run_collection
@@ -41,6 +42,14 @@ from gtaf.application.segment import segment_video
 from gtaf.application.text import sentences_for_video
 from gtaf.application.topics import InsufficientDataError, run_topics
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
+from gtaf.domain.llm import (
+    PRICES_CHECKED_ON,
+    PROVIDER_CHAINS,
+    BudgetExceededError,
+    LLMError,
+    ProviderUnavailableError,
+    QuotaExceededError,
+)
 from gtaf.domain.models import Programme
 from gtaf.domain.segment import MAX_S, MIN_S, TARGET_S
 from gtaf.infrastructure.config_io import load_configuration
@@ -51,6 +60,8 @@ from gtaf.infrastructure.db import (
     load_migrations,
     open_database,
 )
+from gtaf.infrastructure.llm_gateway import Gateway, GatewayConfig, month_start
+from gtaf.infrastructure.llm_providers import api_key, build_transport
 from gtaf.infrastructure.logging_setup import log_event, setup_logging
 from gtaf.infrastructure.raw_store import FileRawStore
 from gtaf.infrastructure.repository import DuckDBRepository
@@ -155,6 +166,18 @@ def _build_parser() -> argparse.ArgumentParser:
     runs = sub.add_parser("runs", help="show recent runs (read-only)")
     runs.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
     runs.add_argument("--limit", type=int, default=20)
+
+    llm_check = sub.add_parser("llm-check", help="one minimal live call per provider")
+    llm_check.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    llm_check.add_argument("--env-file", type=Path, default=Path(".env"))
+    llm_check.add_argument("--budget", type=float, default=None, help="monthly cap in USD")
+
+    llm_bench = sub.add_parser("llm-benchmark", help="same Georgian task on both providers")
+    llm_bench.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    llm_bench.add_argument("--env-file", type=Path, default=Path(".env"))
+    llm_bench.add_argument("--limit", type=int, default=3, help="segments to send")
+    llm_bench.add_argument("--budget", type=float, default=None, help="monthly cap in USD")
+    llm_bench.add_argument("--out", type=Path, default=Path("reports/llm-benchmark.md"))
 
     return parser
 
@@ -648,6 +671,195 @@ def _cmd_runs(*, db_path: Path, limit: int) -> int:
     return EXIT_OK
 
 
+def _gateway(conn: object, env_file: Path, budget: float | None) -> Gateway:
+    """Build a gateway with every provider whose key is present.
+
+    Args:
+        conn: Open read-write connection (the gateway writes `llm_calls`).
+        env_file: Path to `.env`.
+        budget: Monthly cap in USD, or None for the default.
+
+    Returns:
+        A configured gateway.
+    """
+    repo = DuckDBRepository(conn)  # type: ignore[arg-type]
+    transports: dict[str, object] = {}
+    for provider in ("gemini", "deepseek"):
+        try:
+            transports[provider] = build_transport(provider, env_file)
+        except LLMError as exc:
+            print(f"  {provider}: unavailable — {exc}", file=sys.stderr)
+    resolved = budget if budget is not None else _budget_from_env(env_file)
+    return Gateway(
+        transports,  # type: ignore[arg-type]
+        repo,
+        config=GatewayConfig(monthly_budget_usd=resolved),
+        chains=PROVIDER_CHAINS,
+    )
+
+
+def _budget_from_env(env_file: Path) -> float:
+    """Read the monthly budget from the environment or `.env`.
+
+    Args:
+        env_file: Path to `.env`.
+
+    Returns:
+        Budget in USD, defaulting to 20.
+    """
+    raw = api_key("GTAF_MONTHLY_BUDGET_USD", env_file)
+    try:
+        return float(raw) if raw else 20.0
+    except ValueError:
+        return 20.0
+
+
+def _cmd_llm_check(*, db_path: Path, env_file: Path, budget: float | None) -> int:
+    """Make one minimal live call per provider and report tokens and cost (SPEC-005 FR-7).
+
+    Args:
+        db_path: Database file, opened read-write for the call log.
+        env_file: Path to `.env`.
+        budget: Monthly cap in USD, or None.
+
+    Returns:
+        Process exit code: 0 when at least one provider answered.
+    """
+    print(f"prices checked on {PRICES_CHECKED_ON.isoformat()}")
+    conn = connect(db_path, read_only=False)
+    try:
+        gateway = _gateway(conn, env_file, budget)
+        answered = 0
+        for provider in ("gemini", "deepseek"):
+            try:
+                response = gateway.ask(
+                    "Reply with the single word OK.", prompt_version="probe-v1", provider=provider
+                )
+            except BudgetExceededError as exc:
+                print(f"  {provider:9} budget refused: {exc}")
+            except QuotaExceededError as exc:
+                print(f"  {provider:9} quota exhausted: {exc}")
+            except (ProviderUnavailableError, LLMError) as exc:
+                print(f"  {provider:9} failed: {exc}")
+            else:
+                answered += 1
+                cached = " (cached)" if response.cached else ""
+                tokens = (
+                    f"{response.usage.input_tokens}/{response.usage.output_tokens}"
+                    f"/{response.usage.total_tokens}"
+                )
+                print(
+                    f"  {provider:9} ok  model={response.model} tokens={tokens} "
+                    f"cost=${response.cost_usd:.6f}{cached} "
+                    f"tier={response.service_tier or 'n/a'} "
+                    f"reply={response.text.strip()[:20]!r}"
+                )
+        spent = DuckDBRepository(conn).spent_between(month_start())
+        print(f"spent this month: ${spent:.6f}")
+    finally:
+        conn.close()
+    return EXIT_OK if answered else EXIT_ERROR
+
+
+@dataclass(frozen=True, slots=True)
+class _BenchRow:
+    """One provider response in the benchmark table."""
+
+    segment: str
+    provider: str
+    model: str
+    tokens: int
+    cost: float
+    cached: bool
+    text: str
+
+
+def _cmd_llm_benchmark(
+    *, db_path: Path, env_file: Path, limit: int, budget: float | None, out_path: Path
+) -> int:
+    """Send the same Georgian labelling task to both providers (SPEC-005 §2).
+
+    Args:
+        db_path: Database file.
+        env_file: Path to `.env`.
+        limit: Number of segments to send.
+        budget: Monthly cap in USD, or None.
+        out_path: Where to write the comparison for human judgement.
+
+    Returns:
+        Process exit code.
+    """
+    conn = connect(db_path, read_only=False)
+    try:
+        repo = DuckDBRepository(conn)
+        segments = repo.list_segments()[:limit]
+        gateway = _gateway(conn, env_file, budget)
+        rows: list[_BenchRow] = []
+        for index, (segment_id, text) in enumerate(segments, start=1):
+            prompt = (
+                "შენ ხარ ქართული ტელევიზიის სიახლეების ანალიტიკოსი. მოცემული ტექსტისთვის "
+                "შეადგინე ერთი მოკლე თემის სათაური ქართულად (მაქსიმუმ 6 სიტყვა). "
+                'უპასუხე მხოლოდ JSON-ით: {"label_ka": "..."}\n\n'
+                f"ტექსტი:\n{text[:600]}"
+            )
+            for provider in ("gemini", "deepseek"):
+                try:
+                    response = gateway.ask(
+                        prompt, prompt_version="label-v1", provider=provider
+                    )
+                    rows.append(
+                        _BenchRow(
+                            segment=segment_id,
+                            provider=provider,
+                            model=response.model,
+                            tokens=response.usage.total_tokens,
+                            cost=response.cost_usd,
+                            cached=response.cached,
+                            text=response.text.strip()[:200],
+                        )
+                    )
+                except LLMError as exc:
+                    rows.append(
+                        _BenchRow(
+                            segment=segment_id,
+                            provider=provider,
+                            model="-",
+                            tokens=0,
+                            cost=0.0,
+                            cached=False,
+                            text=f"FAILED: {exc}",
+                        )
+                    )
+            print(f"  [{index}/{len(segments)}] {segment_id} done")
+    finally:
+        conn.close()
+
+    generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+    lines = [
+        "# LLM-BENCHMARK — same Georgian labelling task, two vendors",
+        "",
+        f"Generated {generated} UTC over {len(segments)} segments.",
+        "",
+        "Judge the labels by eye: the numbers are objective, the quality is not. "
+        "A model that returns valid JSON with a useless label is worse than one that explains "
+        "itself.",
+        "",
+        "| segment | provider | model | tokens | cost USD | cached | label |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for row in rows:
+        text = row.text.replace("|", "\\|").replace("\n", " ")
+        lines.append(
+            f"| {row.segment} | {row.provider} | {row.model} | {row.tokens} | "
+            f"{row.cost:.6f} | {row.cached} | {text} |"
+        )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    total = sum(row.cost for row in rows)
+    print(f"wrote {out_path}; {len(rows)} responses, total cost ${total:.6f}")
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -714,6 +926,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "llm-check":
+            return _cmd_llm_check(
+                db_path=args.db, env_file=args.env_file, budget=args.budget
+            )
+        if args.command == "llm-benchmark":
+            return _cmd_llm_benchmark(
+                db_path=args.db,
+                env_file=args.env_file,
+                limit=args.limit,
+                budget=args.budget,
+                out_path=args.out,
+            )
         if args.command == "collect":
             return _cmd_collect(                config_dir=args.config_dir,
                 db_path=args.db,
