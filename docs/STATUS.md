@@ -20,50 +20,29 @@ transcript; both count as exposure. Create `.env`, paste the new key there, and 
 
 ## Where the project stands
 
-**Collection was halted by a rate limit; the pipeline now runs collect → normalise → segment.** The
-second backfill reached 262 videos before the caption endpoint returned `HTTP Error 429` for every
-request. The cause is fixed (D-018 — a 429 on a caption payload now stops the run instead of being
-mistaken for a per-video skip), and a verification run confirmed it: exit 5 on the first 429, one
-event, instead of 119. SPEC-003 and SPEC-004 are both implemented.
+**The pipeline works end to end; the corpus is the bottleneck.** SPEC-001…004, 007…010 are implemented
+and verified: collect → normalise → segment → topics → workbench → report, with 158 tests and a clean
+gate. What is missing is analytical work that needs a bigger corpus, and the LLM gateway (SPEC-005),
+whose keys are now present in `.env`.
 
-**Current corpus: 262 videos, 9 days (2026-11-04 … 2026-11-12), ~87k cues, all auto `ka`,
-2,355 segments covering 62.4 hours of broadcast.** The backfill to 2026-10-01 is a multi-day
-operation in paced batches, because the caption endpoint's per-session budget is ~260 payload
-downloads.
-
-**Foundation and collector both exist and are verified.** SPEC-001 gives the schema, config, logging
-and CLI; SPEC-002 gives a working collector — 86 tests, ruff/mypy clean, and a live run that stored
-3 videos, 875 caption cues and 3 immutable raw payloads. A window has been collected end to end for
-the first time.
-
-**What is still missing:** text normalisation and everything downstream of it. No sentences, no
-segments, no topics, no report.
-
-### Corpus so far (2026-11-13)
+### Corpus so far (measured 2026-11-14)
 
 | Quantity | Value |
 |---|---|
-| Videos stored | **245** — Imedi only |
-| Date coverage | 2026-11-04 … 2026-11-12 — **9 of the 43 days in the window** |
-| Caption cues | 87,482 |
-| Caption kind | 245 auto, 0 manual, 0 missing |
-| Raw `json3` files | 245 |
-| Database size | 13.3 MB |
+| Videos stored | **263** — Imedi only, unchanged for two days |
+| Date coverage | 2026-11-03 … 2026-11-13 — **11 of the 43 days in the window** |
+| Segment / topics | 2,355 segments, 30 topics, **38.6 % unclassified** |
+| Caption kind | 263 auto, **0 manual** |
 | Skipped (age-gated) | 26 ≈ 9.7 % of in-window attempts — recoverable only with cookies |
-| Unclassified titles | 243 of 300 listed ≈ **81 %** (worse than the 69 % probe estimate) |
+| Scheduled task | Registered, `Ready`, ran 14 Nov 03:01 with result 0 |
 
-**The corpus is about 3.5× larger than APP-OVERVIEW assumed.** Imedi publishes ~27 videos/day, not
-8–15, so covering the full window needs ~1,300–1,500 listing entries per channel and roughly **13
-hours** of collection for all six. `--listing-limit 300` silently truncated this run to nine days —
-a coverage parameter I had treated as a safety valve.
+**The corpus is ~3.5× larger than APP-OVERVIEW assumed.** Imedi publishes ~27 videos/day, not 8–15, so
+covering the full window needs ~1,300–1,500 listing entries per channel.
 
-One environment question is now settled: **the analysis stays on Python 3.13.1** (D-019) — the whole
-BERTopic/UMAP/numba chain imports cleanly there, so the fallback to 3.12 is not needed.
-
-**Collection is still blocked by the caption endpoint.** A probe two hours after the first 429 was
-refused again, so the quota is hours-scale rather than minutes. At ~250 payload downloads per window
-the 7,000-video backfill is a **multi-week** operation, not a multi-day one — which changes the plan
-more than any code written this month.
+**The collection block is multi-day, not hourly.** After the burst of 13 November the caption endpoint
+returned `429` for over 21 hours, including for a single video. The scheduler now backs off
+12→24→48→72 h (D-024) instead of retrying nightly into the block; `gtaf next` currently says *next
+attempt after 2026-11-17 12:10 UTC*. Until it clears, every analytical stage runs on these 263 videos.
 
 ### What feasibility established
 

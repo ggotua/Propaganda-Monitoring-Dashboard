@@ -754,3 +754,42 @@ gate rather than a judgement call. Every published figure must carry denominator
 span, channel count and method version, which makes one-line captions longer and honest. Gates change
 only through a new decision entry, never by editing the policy quietly. Revisit if: the corpus reaches
 6 channels × 90 days, at which point G-3 and G-4 become satisfiable rather than aspirational.
+
+---
+
+## D-024: The 429 block is multi-day; backoff doubles instead of retrying nightly
+
+Status: Accepted (2026-11-14). Measured, then fixed. **Amends D-018's pacing assumption.**
+
+Context: D-018 assumed a per-session budget of ~260 caption downloads with a cool-down of a couple of
+hours, and the scheduler was built to try once a day with a 200-video budget. Measurement on
+2026-11-14 disproved the cool-down estimate:
+
+- the scheduled task ran at 03:01 and was refused immediately (`HTTP 429`);
+- a single-video probe at 16:00 — **21 hours after the last successful download** — was also refused;
+- the corpus stayed at 263 videos across the whole day.
+
+So the limit is not "a couple of hours"; it is multi-day, at least for this IP after the burst of
+13 November. A nightly retry therefore does not wait out the block — it re-arms it.
+
+Decision:
+1. **Backoff before budget.** When collection runs are blocked, `gtaf next` returns "wait" with a time,
+   and the scheduler collects nothing.
+2. **The wait doubles per consecutive block**: 12 h, 24 h, 48 h, capped at **72 h**. One successful run
+   resets the chain, so a single block does not cost three days.
+3. A `failed` run does **not** count as a block: a crash says nothing about the rate limit, and backing
+   off for the wrong reason hides real failures.
+
+Rejected:
+- **Keep retrying nightly** — measured to deepen the block; it also makes the run history a wall of
+  identical failures, which trains the reader to ignore it.
+- **A fixed 24 h wait** — a guess, and the measurement says the real window can exceed it.
+- **Removing the scheduled task until the limit clears** — loses the opportunity to collect the moment
+  the block lifts, which nobody can predict.
+
+Consequences: the corpus may grow only every few days, so the multi-week backfill estimate from D-018
+becomes a multi-month one unless the limit is per-IP and a different residential IP is used. The daily
+task stays registered but will most often log "backing off" and exit 0 — which is the intended signal,
+not a failure. Revisit if: a measured block clears in under 24 h, or a channel/date pattern shows the
+limit applies to listing rather than payload requests.
+
