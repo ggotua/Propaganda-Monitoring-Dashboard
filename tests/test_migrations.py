@@ -80,7 +80,7 @@ def test_v1_database_migrates_forward(db_file: Path) -> None:
 
     assert result.from_version == "1"
     assert result.to_version == SUPPORTED_SCHEMA_VERSION
-    assert result.applied == (2,)
+    assert result.applied == tuple(range(2, int(SUPPORTED_SCHEMA_VERSION) + 1))
     assert "topics" in tables
     assert "res_topics" in tables
 

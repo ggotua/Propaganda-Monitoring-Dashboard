@@ -39,6 +39,8 @@ from gtaf.application.schedule import (
     recent_runs,
 )
 from gtaf.application.segment import segment_video
+from gtaf.application.segment_drift import segment_video_drift
+from gtaf.infrastructure.embeddings import SentenceTransformerEmbedder
 from gtaf.application.text import sentences_for_video
 from gtaf.application.topic_labels import label_topics
 from gtaf.application.topics import InsufficientDataError, run_topics
@@ -131,10 +133,16 @@ def _build_parser() -> argparse.ArgumentParser:
     text.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
     text.add_argument("--limit", type=int, default=40, help="sentences to print (default: 40)")
 
-    segment = sub.add_parser("segment", help="segment one video or all videos (fixed window)")
+    segment = sub.add_parser("segment", help="segment one video or all videos (fixed or drift)")
     segment.add_argument("--video-id", default=None, help="segment one video")
     segment.add_argument("--all", action="store_true", help="segment every stored video")
     segment.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    segment.add_argument(
+        "--method",
+        choices=("fixed", "drift"),
+        default="fixed",
+        help="fixed windows (control) or drift at semantic boundaries (D-027)",
+    )
     segment.add_argument("--target", type=float, default=TARGET_S, help="target window seconds")
     segment.add_argument("--max", type=float, default=MAX_S, help="hard ceiling seconds")
     segment.add_argument("--min", type=float, default=MIN_S, help="minimum trailing remainder")
@@ -453,8 +461,9 @@ def _cmd_segment(
     max_s: float,
     min_s: float,
     log_dir: Path,
+    method: str = "fixed",
 ) -> int:
-    """Segment one video or all videos with the fixed-window method (SPEC-004).
+    """Segment one video or all videos (SPEC-004 fixed, SPEC-006 drift).
 
     Args:
         db_path: Database file, opened read-write.
@@ -464,6 +473,7 @@ def _cmd_segment(
         max_s: Hard ceiling per segment.
         min_s: Minimum trailing remainder.
         log_dir: Directory for the JSON log.
+        method: ``fixed`` or ``drift`` (D-027).
 
     Returns:
         Process exit code.
@@ -482,18 +492,25 @@ def _cmd_segment(
         targets = (video_id,) if video_id else repo.list_video_ids()
         total = 0
         empty = 0
+        embedder = SentenceTransformerEmbedder() if method == "drift" else None
         for target in targets:
-            written = segment_video(
-                target, repo, repo, target_s=target_s, max_s=max_s, min_s=min_s
-            )
+            if embedder is None:
+                written = segment_video(
+                    target, repo, repo, target_s=target_s, max_s=max_s, min_s=min_s
+                )
+            else:
+                written = segment_video_drift(target, repo, repo, embedder)
             total += written
             if written == 0:
                 empty += 1
-        log_event(logger, 20, "segment.done", videos=len(targets), segments=total, empty=empty)
+        log_event(
+            logger, 20, "segment.done", videos=len(targets), segments=total, empty=empty,
+            method=method,
+        )
     finally:
         conn.close()
 
-    print(f"segmented {len(targets)} video(s): {total} segments, {empty} with none")
+    print(f"segmented {len(targets)} video(s) with {method}: {total} segments, {empty} with none")
     return EXIT_OK
 
 
@@ -943,6 +960,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_s=args.max,
                 min_s=args.min,
                 log_dir=Path("logs"),
+                method=args.method,
             )
         if args.command == "topics":
             return _cmd_topics(

@@ -515,15 +515,30 @@ class DuckDBRepository:
             raise
         return len(labels)
 
-    def list_segments(self) -> tuple[tuple[str, str], ...]:
-        """Return every stored segment as ``(segment_id, text)``.
+    def list_segments(self, method: str | None = None) -> tuple[tuple[str, str], ...]:
+        """Return stored segments as ``(segment_id, text)``.
+
+        Args:
+            method: Restrict to one ``seg_method``; None returns every method mixed.
 
         Returns:
             Segments in video and time order.
+
+        Notes:
+            The default is deliberately "all": a caller that wants one segmentation must say so, because
+            after D-027 two segmentations coexist and a silent mix would double the corpus. The analysis
+            passes ``ACTIVE_SEG_METHOD`` explicitly.
         """
-        rows = self._conn.execute(
-            "SELECT segment_id, text FROM segments ORDER BY video_id, start_s"
-        ).fetchall()
+        if method is None:
+            rows = self._conn.execute(
+                "SELECT segment_id, text FROM segments ORDER BY video_id, start_s"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT segment_id, text FROM segments WHERE seg_method = ? "
+                "ORDER BY video_id, start_s",
+                [method],
+            ).fetchall()
         return tuple((str(row[0]), str(row[1])) for row in rows)
 
     def replace_topic_results(

@@ -101,8 +101,8 @@ class FakeReader:
     def __init__(self, count: int) -> None:
         self.count = count
 
-    def list_segments(self) -> tuple[tuple[str, str], ...]:
-        """Return ``count`` synthetic segments."""
+    def list_segments(self, method: str | None = None) -> tuple[tuple[str, str], ...]:
+        """Return ``count`` synthetic segments, ignoring the method (the fake has only one)."""
         return tuple((f"seg{i}", f"text {i}") for i in range(self.count))
 
 

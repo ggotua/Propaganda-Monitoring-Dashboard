@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
 
+from gtaf.application.methods import ACTIVE_SEG_METHOD
 from gtaf.domain.topics import OUTLIER_TOPIC_ID
 
 
@@ -130,8 +131,13 @@ def corpus_overview(conn: SqlConnection) -> CorpusOverview:
         Counts across the current corpus.
     """
     videos = conn.execute("SELECT count(*) FROM videos").fetchone()
-    segments = conn.execute("SELECT count(*) FROM segments").fetchone()
-    topics = conn.execute("SELECT count(*) FROM topics").fetchone()
+    segments = conn.execute(
+        "SELECT count(*) FROM segments WHERE seg_method = ?", [ACTIVE_SEG_METHOD]
+    ).fetchone()
+    topics = conn.execute(
+        "SELECT count(*) FROM topics WHERE run_id = ("
+        "  SELECT run_id FROM runs WHERE stage = 'topics' ORDER BY started_at DESC LIMIT 1)"
+    ).fetchone()
     span = conn.execute(
         "SELECT min(broadcast_date_local), max(broadcast_date_local), "
         "count(DISTINCT channel_id) FROM videos"
@@ -197,8 +203,8 @@ def topic_shares(
         over clustered segments alone would silently hide the 38.6 % the model could not place
         (`TOPIC-EVAL.md` §3).
     """
-    clauses: list[str] = []
-    parameters: list[object] = []
+    clauses: list[str] = ["s.seg_method = ?"]
+    parameters: list[object] = [ACTIVE_SEG_METHOD]
     if channel_id is not None:
         clauses.append("v.channel_id = ?")
         parameters.append(channel_id)

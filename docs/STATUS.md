@@ -31,7 +31,7 @@ whose keys are now present in `.env`.
 |---|---|
 | Videos stored | **263** — Imedi only, unchanged for two days |
 | Date coverage | 2026-11-03 … 2026-11-13 — **11 of the 43 days in the window** |
-| Segment / topics | 2,355 segments, 30 topics, **38.6 % unclassified** |
+| Segments / topics | **4,837 drift segments** (control: 2,355 fixed), 62 topics, **38.2 % unclassified** |
 | Caption kind | 263 auto, **0 manual** |
 | Skipped (age-gated) | 26 ≈ 9.7 % of in-window attempts — recoverable only with cookies |
 | Scheduled task | Registered, `Ready`, ran 14 Nov 03:01 with result 0 |

@@ -60,9 +60,9 @@ def populated_db(initialized_db: Path) -> Path:
         conn.execute(
             "INSERT INTO segments (segment_id, video_id, start_s, end_s, text, title_ka, title_en, "
             "seg_method, seg_version) VALUES "
-            "('v1:0', 'v1', 0, 90, 'text a', NULL, NULL, 'fixed', '1'), "
-            "('v1:1', 'v1', 90, 180, 'text b', NULL, NULL, 'fixed', '1'), "
-            "('v1:2', 'v1', 180, 270, 'text c', NULL, NULL, 'fixed', '1')"
+            "('v1:0', 'v1', 0, 90, 'text a', NULL, NULL, 'drift', '1'), "
+            "('v1:1', 'v1', 90, 180, 'text b', NULL, NULL, 'drift', '1'), "
+            "('v1:2', 'v1', 180, 270, 'text c', NULL, NULL, 'drift', '1')"
         )
         run_id = repo.start_run("topics", "{}")
         repo.replace_topic_results(

@@ -940,3 +940,26 @@ API cost). The 3.9 % of segments shorter than 15 s suggests `min_s` needs tuning
 Revisit if: a better boundary signal appears (speaker turns, scene changes from video metadata), or the
 re-run shows the gap does not survive at corpus scale.
 
+### Addendum, 2026-11-14: the corpus-scale rebuild, and what it did not fix
+
+The rebuild ran: **4,837 drift segments** (from 2,355 fixed), 62 topics, 1,849 unclassified = **38.2 %**,
+against the fixed baseline's 38.6 % on 2,355 segments and 30 topics.
+
+The improvement is real where it was measured and absent where it is usually claimed:
+
+- the boundary gap survived at corpus scale (the mechanism is not sample size);
+- topic count **doubled** (30 → 62) and the largest cluster fell from 7.1 % to 5.5 %, which is what
+  cleaner units should do;
+- the **outlier rate did not move**. 38.2 % versus 38.6 % is noise.
+
+That last point is the finding worth keeping: the unclassified share is a property of *the corpus and the
+model* — short ASR-noisy passages, a 0.4 `max_df`, HDBSCAN's density assumptions — and **not** an artefact
+of cutting by the clock. Anyone expecting better segmentation to shrink the grey mass now has a measured
+answer. The next lever is the model (embedding choice, density parameters) or the corpus (more channels),
+not the boundary rule.
+
+Two engineering notes from the rebuild, both recorded in SPEC-006: segment ids had to become
+method-scoped (a fixed and a drift segment can begin on the same millisecond), and DuckDB 2.0 cannot drop
+a CHECK constraint, so widening the allowed `seg_method` values required a table rebuild with its index
+dropped first.
+

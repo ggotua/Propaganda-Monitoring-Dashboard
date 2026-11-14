@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from gtaf.application.methods import ACTIVE_SEG_METHOD
 from gtaf.domain.topics import (
     TOPIC_METHOD_VERSION,
     TopicAssignment,
@@ -52,8 +53,8 @@ class TopicEngine(Protocol):
 class SegmentReader(Protocol):
     """Source of segments to cluster."""
 
-    def list_segments(self) -> tuple[tuple[str, str], ...]:
-        """Return ``(segment_id, text)`` pairs."""
+    def list_segments(self, method: str | None = None) -> tuple[tuple[str, str], ...]:
+        """Return ``(segment_id, text)`` pairs, optionally for one ``seg_method``."""
         ...
 
 
@@ -144,7 +145,7 @@ def run_topics(
             a handful of segments produces a confident-looking model that means nothing, so this
             fails rather than warns.
     """
-    segments = reader.list_segments()
+    segments = reader.list_segments(ACTIVE_SEG_METHOD)
     if len(segments) < min_segments:
         raise InsufficientDataError(
             f"only {len(segments)} segments available; clustering needs at least {min_segments}. "

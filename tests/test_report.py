@@ -147,9 +147,9 @@ def populated_db(initialized_db: Path) -> Path:
         conn.execute(
             "INSERT INTO segments (segment_id, video_id, start_s, end_s, text, title_ka, title_en, "
             "seg_method, seg_version) VALUES "
-            "('v1:0','v1',0,90,'a',NULL,NULL,'fixed','1'),"
-            "('v1:1','v1',90,180,'b',NULL,NULL,'fixed','1'),"
-            "('v1:2','v1',180,270,'c',NULL,NULL,'fixed','1')"
+            "('v1:0','v1',0,90,'a',NULL,NULL,'drift','1'),"
+            "('v1:1','v1',90,180,'b',NULL,NULL,'drift','1'),"
+            "('v1:2','v1',180,270,'c',NULL,NULL,'drift','1')"
         )
         run_id = repo.start_run("topics", "{}")
         repo.replace_topic_results(
@@ -180,6 +180,6 @@ def test_build_report_computes_the_slice(populated_db: Path) -> None:
 
     assert context.channel_label == "Imedi"
     assert context.outlier_rate == pytest.approx(1 / 3)
-    assert context.segment_methods == ("fixed",)
+    assert context.segment_methods == ("drift",)
     assert context.topic_versions == ("test-1",)
     assert other.is_empty is True

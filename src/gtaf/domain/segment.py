@@ -56,21 +56,28 @@ class SegmentDraft:
     text: str
 
 
-def _draft(video_id: str, group: Sequence[Sentence]) -> SegmentDraft:
+def _draft(video_id: str, group: Sequence[Sentence], *, prefix: str = "") -> SegmentDraft:
     """Build a segment draft from a group of sentences.
 
     Args:
         video_id: Owning video.
         group: Consecutive sentences forming the segment.
+        prefix: Method discriminator inserted into the id.
 
     Returns:
         The draft, with a deterministic id derived from the start time in whole milliseconds so a
         re-run reproduces byte-identical ids.
+
+    Notes:
+        The prefix exists because two segmentations of the same video can start a segment at the same
+        millisecond: measured 2026-11-14, `ZZGoZutVr7o:00000199` was produced by both the fixed-window
+        and drift runs and the primary key rejected the second. Method-scoped ids make that collision
+        impossible; the fixed method keeps an empty prefix so its existing rows stay valid.
     """
     start_s = group[0].start_s
     end_s = group[-1].end_s
     return SegmentDraft(
-        segment_id=f"{video_id}:{round(start_s * 1000):08d}",
+        segment_id=f"{video_id}:{prefix}{round(start_s * 1000):08d}",
         start_s=start_s,
         end_s=end_s,
         text=" ".join(sentence.text for sentence in group),
@@ -246,7 +253,7 @@ def segment_by_drift(
         groups.append(current)
 
     groups = _merge_short_groups(groups, min_s=min_s, max_s=max_s)
-    return tuple(_draft(video_id, group) for group in groups)
+    return tuple(_draft(video_id, group, prefix="drift:") for group in groups)
 
 
 def _merge_short_groups(

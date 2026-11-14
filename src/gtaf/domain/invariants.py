@@ -20,7 +20,7 @@ from datetime import UTC, date, datetime, timedelta, timezone
 TBILISI_OFFSET = timezone(timedelta(hours=4), "Asia/Tbilisi")
 
 # The schema version this code understands (INV-1). Bumped to 2 when topic tables landed (SPEC-007).
-SUPPORTED_SCHEMA_VERSION = "2"
+SUPPORTED_SCHEMA_VERSION = "3"
 
 
 def local_date_of(instant_utc: datetime) -> date:
