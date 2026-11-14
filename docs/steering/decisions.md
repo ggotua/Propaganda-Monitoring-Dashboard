@@ -793,3 +793,50 @@ task stays registered but will most often log "backing off" and exit 0 — which
 not a failure. Revisit if: a measured block clears in under 24 h, or a channel/date pattern shows the
 limit applies to listing rather than payload requests.
 
+---
+
+## D-025: Gemini free tier is the primary LLM; DeepSeek is the paid validator
+
+Status: Accepted (2026-11-14). Measured with live calls; amends the role assumption in D-010.
+
+Context: D-010 said the SPEC-005 benchmark chooses the primary provider on measured Georgian quality
+and cost, with DeepSeek as the default until then. Probing both keys on 2026-11-14 changed the picture:
+
+- **DeepSeek**: `HTTP 200`, 6 prompt + 1 completion tokens, reply `OK` — the key has balance, so it is
+  usable, and it is metered per token.
+- **Gemini**: `HTTP 200` on `gemini-3-flash-preview`, and the key sees 49 models supporting
+  `generateContent`. Google AI Studio keys carry a **free tier**, so marginal cost is zero within quota.
+- **Model names churn fast.** `gemini-2.5-flash` and `gemini-2.5-flash-lite` return *"no longer
+  available to new users"* (`404`), `gemini-flash-latest` returned `503` (high demand), and
+  `gemini-3.8-flash` timed out. Only `gemini-3-flash-preview` answered.
+- **Reasoning tokens are real.** "Say OK" cost `promptTokenCount: 2`, `candidatesTokenCount: 1` but
+  `totalTokenCount: 26` — 23 were thinking tokens. A cost model that counts only prompt+completion
+  understates usage by an order of magnitude on short prompts.
+
+Decision:
+1. **Gemini free tier is the primary** for bulk work (topic labels, segmentation prompts). The binding
+   constraint for this project is budget, not capability, and free beats cheap.
+2. **DeepSeek is the validator**, used on samples only. D-010's requirement stands: the validator is a
+   different vendor, so the two are structurally independent.
+3. The gateway **must not hardcode one model name**: it takes an ordered fallback chain and moves on
+   when a model is retired, overloaded or times out.
+4. **Token accounting uses `totalTokenCount`**, and records `serviceTier`, because reasoning tokens are
+   billed and quota is consumed by them.
+5. **Free-tier data use is recorded as a caveat**: the free tier permits Google to use prompts to
+   improve its products; the paid tier does not. The corpus is public broadcast output, so this is
+   acceptable for this project, but it must be stated in the methodology, not assumed away.
+
+Rejected:
+- **DeepSeek as primary for parity** — pays per token on thousands of segments to gain nothing the
+  benchmark could prove; free-with-quota is the better default for a research budget.
+- **A single hardcoded model** — measured to break twice in ten minutes of probing.
+- **Counting only prompt and completion tokens** — measured 26 total against 3 visible.
+- **Assuming the free tier means unlimited** — it has RPM/RPD quotas, which the gateway must surface as
+  a distinct error rather than retrying blindly.
+
+Consequences: the benchmark's job shrinks from "which provider" to "is the free model good enough on
+Georgian", which is the question that matters and the one a human must judge (D-010). Quota, not money,
+becomes the operational constraint on LLM work — a good problem, and one that affects SPEC-014/015's
+batch sizes. Revisit if: the free tier's terms change, its quotas drop below what a report needs, or the
+benchmark shows the free model is not good enough for Georgian framing work.
+
