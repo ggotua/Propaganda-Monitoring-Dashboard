@@ -61,7 +61,7 @@ def _topic_figure(context: ReportContext, *, inline_js: bool) -> str:
     labels = [
         escape(
             f"{'UNCLASSIFIED' if share.topic_id == OUTLIER_TOPIC_ID else 't' + str(share.topic_id)}"
-            f" · {(share.label or '')[:40]}"
+            f" · {((share.label_en or share.label) or '')[:40]}"
         )
         for share in shares
     ]
@@ -182,7 +182,13 @@ def render_html(context: ReportContext) -> str:
         rows = "".join(
             "<tr>"
             f"<td>{'UNCLASSIFIED' if share.topic_id == OUTLIER_TOPIC_ID else 't' + str(share.topic_id)}</td>"
-            f"<td>{escape(share.label or '')}</td>"
+            f"<td>{escape(share.label or '')}"
+            + (
+                f'<br><span class="muted">{escape(share.label_en)}</span>'
+                if share.label_en
+                else ""
+            )
+            + "</td>"
             f"<td>{share.n_segments}</td>"
             f"<td>{share.share:.1%}</td>"
             f"<td>{escape(', '.join(share.keywords[:8]))}</td>"

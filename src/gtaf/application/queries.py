@@ -65,10 +65,12 @@ class TopicShare:
 
     Attributes:
         topic_id: Topic identifier, ``-1`` for outliers.
-        label: Label (keyword, not a phrase, until SPEC-005).
+        label: Georgian label — an LLM-generated name when SPEC-005 labelled the run, else a
+            keyword.
         keywords: Top terms.
         n_segments: Segments in this topic.
         share: Share of **all** segments, outliers included in the denominator.
+        label_en: English label when the run was labelled bilingually, else None.
     """
 
     topic_id: int
@@ -76,6 +78,7 @@ class TopicShare:
     keywords: tuple[str, ...]
     n_segments: int
     share: float
+    label_en: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +230,7 @@ def topic_shares(
                coalesce(t.label_ka,
                         CASE WHEN r.topic_id = -1 THEN 'unclassified'
                              ELSE 'topic ' || r.topic_id END) AS label,
+               t.label_en,
                t.keywords,
                count(*) AS n
         FROM res_topics r
@@ -234,14 +238,14 @@ def topic_shares(
         JOIN videos v ON v.video_id = s.video_id
         LEFT JOIN topics t ON t.topic_id = r.topic_id AND t.run_id = r.run_id
         {where}
-        GROUP BY 1, 2, 3
+        GROUP BY 1, 2, 3, 4
         ORDER BY n DESC
         """,
         parameters,
     ).fetchall()
 
     shares = []
-    for topic_id, label, keywords, n in rows:
+    for topic_id, label, label_en, keywords, n in rows:
         raw_keywords = keywords if isinstance(keywords, (list, tuple)) else ()
         count = _as_int(n)
         shares.append(
@@ -251,6 +255,7 @@ def topic_shares(
                 keywords=tuple(str(word) for word in raw_keywords),
                 n_segments=count,
                 share=count / total,
+                label_en=str(label_en) if label_en else None,
             )
         )
     return tuple(shares)

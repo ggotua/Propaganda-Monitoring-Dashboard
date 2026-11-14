@@ -40,6 +40,7 @@ from gtaf.application.schedule import (
 )
 from gtaf.application.segment import segment_video
 from gtaf.application.text import sentences_for_video
+from gtaf.application.topic_labels import label_topics
 from gtaf.application.topics import InsufficientDataError, run_topics
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 from gtaf.domain.llm import (
@@ -178,6 +179,12 @@ def _build_parser() -> argparse.ArgumentParser:
     llm_bench.add_argument("--limit", type=int, default=3, help="segments to send")
     llm_bench.add_argument("--budget", type=float, default=None, help="monthly cap in USD")
     llm_bench.add_argument("--out", type=Path, default=Path("reports/llm-benchmark.md"))
+
+    label = sub.add_parser("label-topics", help="name topics via the LLM gateway (ka + en)")
+    label.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    label.add_argument("--env-file", type=Path, default=Path(".env"))
+    label.add_argument("--provider", default="gemini")
+    label.add_argument("--budget", type=float, default=None, help="monthly cap in USD")
 
     return parser
 
@@ -860,6 +867,43 @@ def _cmd_llm_benchmark(
     return EXIT_OK
 
 
+def _cmd_label_topics(
+    *, db_path: Path, env_file: Path, provider: str, budget: float | None
+) -> int:
+    """Give every topic a Georgian and English name through the gateway.
+
+    Args:
+        db_path: Database file, opened read-write.
+        env_file: Path to `.env`.
+        provider: Provider key to call.
+        budget: Monthly cap in USD, or None.
+
+    Returns:
+        Process exit code.
+    """
+    conn = connect(db_path, read_only=False)
+    try:
+        repo = DuckDBRepository(conn)
+        gateway = _gateway(conn, env_file, budget)
+        result = label_topics(gateway, repo, provider=provider)
+        rows = repo.list_topics(result.run_id)
+    finally:
+        conn.close()
+
+    print(
+        f"run {result.run_id}: {result.labelled} topic(s) named, "
+        f"{result.skipped} left with keywords"
+    )
+    print("\n  topic  size  ka / en")
+    for topic_id, label_ka, keywords, n_segments in rows[:12]:
+        marker = "OUTLIER" if topic_id == -1 else f"t{topic_id}"
+        english = "" if not label_ka else f"  [{label_ka}]"
+        print(f"  {marker:>7} {n_segments:>5}{english}")
+        if keywords:
+            print(f"  {'':>13}{', '.join(keywords[:6])}")
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -937,6 +981,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 limit=args.limit,
                 budget=args.budget,
                 out_path=args.out,
+            )
+        if args.command == "label-topics":
+            return _cmd_label_topics(
+                db_path=args.db,
+                env_file=args.env_file,
+                provider=args.provider,
+                budget=args.budget,
             )
         if args.command == "collect":
             return _cmd_collect(                config_dir=args.config_dir,

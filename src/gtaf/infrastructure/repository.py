@@ -8,7 +8,7 @@ transaction so a re-run converges instead of accumulating.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 
 import duckdb
@@ -22,6 +22,18 @@ from gtaf.domain.topics import TopicAssignment, TopicSummary
 def _utc_now() -> datetime:
     """Return the current UTC instant as a naive datetime (storage convention)."""
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _as_int(value: object) -> int:
+    """Coerce a driver value (int or numeric string) to int.
+
+    Args:
+        value: Raw value from a row.
+
+    Returns:
+        The integer value.
+    """
+    return value if isinstance(value, int) else int(str(value))
 
 
 class DuckDBRepository:
@@ -438,6 +450,70 @@ class DuckDBRepository:
             "SELECT coalesce(sum(cost_usd), 0) FROM llm_calls WHERE created_at >= ?", [start]
         ).fetchone()
         return float(row[0]) if row else 0.0
+
+    def latest_topics_run(self) -> str | None:
+        """Return the newest run that produced topics.
+
+        Returns:
+            The run id, or None when no topic run exists.
+        """
+        row = self._conn.execute(
+            "SELECT t.run_id FROM topics t JOIN runs r ON r.run_id = t.run_id "
+            "ORDER BY r.started_at DESC LIMIT 1"
+        ).fetchone()
+        return str(row[0]) if row else None
+
+    def list_topics(
+        self, run_id: str
+    ) -> tuple[tuple[int, str | None, tuple[str, ...], int], ...]:
+        """Return topics of one run.
+
+        Args:
+            run_id: Topics run.
+
+        Returns:
+            Rows of ``(topic_id, label_ka, keywords, n_segments)`` ordered by size.
+        """
+        rows = self._conn.execute(
+            "SELECT topic_id, label_ka, keywords, n_segments FROM topics "
+            "WHERE run_id = ? ORDER BY n_segments DESC",
+            [run_id],
+        ).fetchall()
+        return tuple(
+            (
+                _as_int(row[0]),
+                str(row[1]) if row[1] is not None else None,
+                tuple(str(word) for word in (row[2] or [])),
+                _as_int(row[3]),
+            )
+            for row in rows
+        )
+
+    def update_topic_labels(self, run_id: str, labels: Mapping[int, tuple[str, str | None]]) -> int:
+        """Write LLM labels onto topic rows.
+
+        Args:
+            run_id: Topics run.
+            labels: Mapping of topic id to ``(label_ka, label_en)``.
+
+        Returns:
+            Number of rows updated.
+        """
+        if not labels:
+            return 0
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            for topic_id, (label_ka, label_en) in labels.items():
+                self._conn.execute(
+                    "UPDATE topics SET label_ka = ?, label_en = ? "
+                    "WHERE run_id = ? AND topic_id = ?",
+                    [label_ka, label_en, run_id, topic_id],
+                )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+        return len(labels)
 
     def list_segments(self) -> tuple[tuple[str, str], ...]:
         """Return every stored segment as ``(segment_id, text)``.

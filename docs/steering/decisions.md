@@ -840,3 +840,46 @@ becomes the operational constraint on LLM work — a good problem, and one that 
 batch sizes. Revisit if: the free tier's terms change, its quotas drop below what a report needs, or the
 benchmark shows the free model is not good enough for Georgian framing work.
 
+---
+
+## D-026: Measured free quota is ~11 calls/day, so batch jobs run on DeepSeek
+
+Status: Accepted (2026-11-14). Measured the day it was written. **Amends D-025's role split.**
+
+Context: D-025 made Gemini's free tier the primary for *bulk* work on the reasoning that free beats
+cheap. The very first batch job tested that assumption and broke it:
+
+- labelling the 30 topics through Gemini failed with `HTTP 429 — "You exceeded your current quota"`
+  after **11 live calls in total** that day (1 probe + benchmark calls + 1 check);
+- the same job through DeepSeek labelled **30 topics in 30 calls for $0.004608**, with no quota error;
+- the gateway behaved correctly at the failure: it stopped the provider rather than rotating models to
+  dodge the quota (SPEC-005 FR-5), which is why the limit was visible instead of hidden.
+
+So the free quota is roughly an order of magnitude *smaller* than one batch, and money is not the
+binding constraint it was assumed to be: thirty bilingual topic names cost **half a cent**.
+
+Decision:
+1. **Gemini free tier is for light, interactive work** — probes, spot checks, a handful of labels, the
+   smoke test. Its quota is a hard daily wall, not a budget to plan around.
+2. **Batch jobs run on DeepSeek.** Cost is negligible at corpus scale (30 topics = $0.0046; a 1,000-call
+   framing pass would be roughly $0.15) and there is no daily cap to design around.
+3. **The validator rule still holds (D-010)**, but its economics change: when the primary is DeepSeek,
+   the validator is Gemini *while quota allows*, and a **human** otherwise. Validation must not silently
+   become "the same vendor twice" just because the free tier is exhausted.
+4. **Quota exhaustion is a scheduling fact, not an exception to retry.** `label-topics` failing with
+   `QuotaExceededError` is the correct, honest outcome.
+
+Rejected:
+- **Retry Gemini later in the day** — the quota is daily; waiting hours for 30 labels that cost half a
+  cent in the meantime is a bad trade.
+- **Reduce labels to fit the quota** — labelling 10 of 30 topics produces a corpus with unexplained
+  holes exactly where the biggest clusters are.
+- **Second Gemini key** — dodging a quota with a second identity is the same class of mistake as
+  rotating IPs to dodge a caption block (D-024).
+
+Consequences: the monthly budget guard (default $20) now protects a spend that is realistically cents,
+so it will not bind; its value is as a backstop against a bug that calls in a loop. The
+`provider` argument exists precisely so this split is a flag, not a rewrite. Revisit if: the free tier's
+quota rises above ~1,000 calls/day (then D-025's original split becomes right), or DeepSeek's prices
+change materially.
+
