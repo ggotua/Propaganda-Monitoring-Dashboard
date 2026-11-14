@@ -40,7 +40,6 @@ from gtaf.application.schedule import (
 )
 from gtaf.application.segment import segment_video
 from gtaf.application.segment_drift import segment_video_drift
-from gtaf.infrastructure.embeddings import SentenceTransformerEmbedder
 from gtaf.application.text import sentences_for_video
 from gtaf.application.topic_labels import label_topics
 from gtaf.application.topics import InsufficientDataError, run_topics
@@ -63,6 +62,7 @@ from gtaf.infrastructure.db import (
     load_migrations,
     open_database,
 )
+from gtaf.infrastructure.embeddings import SentenceTransformerEmbedder
 from gtaf.infrastructure.llm_gateway import Gateway, GatewayConfig, month_start
 from gtaf.infrastructure.llm_providers import api_key, build_transport
 from gtaf.infrastructure.logging_setup import log_event, setup_logging

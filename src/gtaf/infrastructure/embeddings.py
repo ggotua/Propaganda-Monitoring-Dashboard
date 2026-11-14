@@ -1,11 +1,11 @@
 """Local sentence embeddings adapter (SPEC-006).
 
 The drift segmenter needs to know when the text stops being about the same thing, which requires
-similarity between neighbouring sentences. Embeddings are computed **locally** — the same multilingual
-model the topic stage uses — so segmentation costs no API calls and no quota (D-026).
+similarity between neighbouring sentences. Embeddings are computed **locally** — the same
+multilingual model the topic stage uses — so segmentation costs no API calls and no quota (D-026).
 
-The model is loaded once per process: loading it costs seconds, and a per-video reload would dominate
-a corpus-wide run.
+The model is loaded once per process: loading it costs seconds, and a per-video reload would
+dominate a corpus-wide run.
 """
 
 from __future__ import annotations

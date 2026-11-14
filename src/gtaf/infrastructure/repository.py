@@ -525,9 +525,9 @@ class DuckDBRepository:
             Segments in video and time order.
 
         Notes:
-            The default is deliberately "all": a caller that wants one segmentation must say so, because
-            after D-027 two segmentations coexist and a silent mix would double the corpus. The analysis
-            passes ``ACTIVE_SEG_METHOD`` explicitly.
+            The default is deliberately "all": a caller that wants one segmentation must say so,
+            because after D-027 two segmentations coexist and a silent mix would double the corpus.
+            The analysis passes ``ACTIVE_SEG_METHOD`` explicitly.
         """
         if method is None:
             rows = self._conn.execute(

@@ -69,9 +69,10 @@ def _draft(video_id: str, group: Sequence[Sentence], *, prefix: str = "") -> Seg
         re-run reproduces byte-identical ids.
 
     Notes:
-        The prefix exists because two segmentations of the same video can start a segment at the same
-        millisecond: measured 2026-11-14, `ZZGoZutVr7o:00000199` was produced by both the fixed-window
-        and drift runs and the primary key rejected the second. Method-scoped ids make that collision
+        The prefix exists because two segmentations of the same video can start a segment at the
+        same millisecond: measured 2026-11-14, `ZZGoZutVr7o:00000199` was produced by both the
+        fixed-window and drift runs and the primary key rejected the second. Method-scoped ids make
+        that collision
         impossible; the fixed method keeps an empty prefix so its existing rows stay valid.
     """
     start_s = group[0].start_s

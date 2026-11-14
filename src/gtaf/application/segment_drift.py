@@ -66,7 +66,7 @@ def drift_threshold(
         The threshold, or 0.0 when there is nothing to compare.
 
     Notes:
-        Per video, not global: a global cut-off would shatter a slowly modulated bulletin and merge a
+        Per video, not global: a global cut-off would shatter a slowly modulated bulletin and merge
         fast-moving interview.
     """
     if not similarities:
