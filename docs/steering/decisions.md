@@ -883,3 +883,60 @@ so it will not bind; its value is as a backstop against a bug that calls in a lo
 quota rises above ~1,000 calls/day (then D-025's original split becomes right), or DeepSeek's prices
 change materially.
 
+---
+
+## D-027: Segmentation cuts where meaning drifts, not where the clock says
+
+Status: Accepted (2026-11-14). Settled by measurement, not preference.
+
+Context: SPEC-004 shipped 90-second fixed windows as a disposable unit, and every topic figure since has
+been a figure about windows rather than about stories. SPEC-006 asked for real segmentation. Three rules
+were implemented and compared on 20 real videos (190–282 segments), using the same multilingual embedding
+model the topic stage uses, and scored by one metric that is not circular:
+
+- **intra** — mean similarity of adjacent sentences *inside* a segment (higher = coherent);
+- **inter** — mean similarity of the last sentence of one segment to the first of the next (lower =
+  the boundary actually marks a change);
+- **gap = intra − inter**, the only number that measures what a boundary is for.
+
+| method | segments | median s | intra | inter | **gap** |
+|---|---|---|---|---|---|
+| fixed 90 s | 190 | 96.3 | 0.4626 | 0.4776 | **−0.0150** |
+| pause | 281 | 64.7 | 0.4619 | 0.4767 | **−0.0148** |
+| drift | 282 | 52.1 | 0.4961 | 0.2792 | **+0.2169** |
+
+Two findings, one of them uncomfortable:
+
+1. **Time-based boundaries are anti-correlated with topic change.** Both fixed and pause produced a
+   *negative* gap: the sentence across a boundary was slightly *more* similar to its predecessor than an
+   average in-segment pair. Cutting by the clock does not merely miss topics — it mixes them.
+2. **Pause-aware cutting does not help.** The intuitive rule ("people pause between topics") measured
+   identically to the arbitrary one (−0.0148 vs −0.0150) and produced 48 % more segments for nothing.
+   The intuition is wrong, or the pauses in this corpus are breath, not structure.
+
+Drift — cut where similarity to the next sentence falls below the video's own 25th percentile — is the
+only rule whose boundaries separate meaning, by two orders of magnitude on this gap.
+
+Decision:
+1. **Drift becomes the segmentation method** (`seg_method = "drift"`, version 1).
+2. **Fixed windows remain the control**, because every existing figure was computed on them and a claim
+   cannot be compared to a baseline that was overwritten.
+3. **Pause is kept in code but not adopted**: measured, documented, and available as a control; it is not
+   wired into the pipeline because a method with no measured benefit is a liability.
+4. **The threshold is computed per video**, not globally: a flat bulletin and a heated interview have
+   different similarity scales, and a global cut-off would shatter one and merge the other.
+
+Rejected:
+- **Adopt pause because it sounds right** — the measurement says it is indistinguishable from windows.
+- **A global similarity threshold** — measured per-video distributions differ; a global value would be a
+  hidden tuning knob that works on one channel and fails on another.
+- **Keep windows and lower the claim** — the whole point of segmentation is to make topic shares mean
+  something; keeping a unit that mixes topics and then disclaiming it is worse than fixing it.
+
+Consequences: segment counts rise roughly 50 %, so the corpus must be re-segmented and **topics must be
+re-run and re-labelled** — a segment id change invalidates `res_topics`, and a stale join would silently
+mix methods. Drift segmentation also adds a local embedding pass (~18k sentences, minutes on CPU, no
+API cost). The 3.9 % of segments shorter than 15 s suggests `min_s` needs tuning before the rebuild.
+Revisit if: a better boundary signal appears (speaker turns, scene changes from video metadata), or the
+re-run shows the gap does not survive at corpus scale.
+

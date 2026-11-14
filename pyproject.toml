@@ -40,6 +40,10 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "FURB", "RUF", "BLE"]
 "src/gtaf/presentation/app.py" = ["E501"]
 # The report renderer is an HTML/CSS template; its long lines are markup, not code.
 "src/gtaf/presentation/report_html.py" = ["E501"]
+# Spikes are measurement scripts, not shipped code: each carries its finding as prose at the top so a
+# later session reads the result instead of re-running the experiment. Prose is not wrapped, and
+# `zip(xs, xs[1:])` reads more clearly than pairwise() in a measurement table.
+"spikes/*.py" = ["E501", "RUF007"]
 
 [tool.mypy]
 strict = true
