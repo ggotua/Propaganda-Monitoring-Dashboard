@@ -10,6 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from gtaf.application.schedule import (
+    block_history,
     channel_totals,
     collected_today,
     next_batch,
@@ -182,6 +183,116 @@ def test_stale_running_runs_are_counted(initialized_db: Path) -> None:
         conn.close()
 
     assert "left in 'running' state" in decision.reason
+
+
+def test_backoff_after_one_block(initialized_db: Path) -> None:
+    """A single 429 pauses for 12 hours rather than retrying the next day."""
+    conn = connect(initialized_db)
+    try:
+        repo = DuckDBRepository(conn)
+        run_id = repo.start_run("collect", "{}")
+        repo.finish_run(run_id, status="blocked", n_items=0, watermark=None, error="429")
+        conn.execute(
+            "UPDATE runs SET started_at = ? WHERE run_id = ?",
+            [datetime(2026, 11, 14, 3, 0), run_id],
+        )
+    finally:
+        conn.close()
+
+    conn = connect(initialized_db, read_only=True)
+    try:
+        decision = next_batch(
+            conn, CONFIGURED, today=TODAY, now=datetime(2026, 11, 14, 10, 0)
+        )
+    finally:
+        conn.close()
+
+    assert decision.collect is False
+    assert "backing off after 1 blocked run" in decision.reason
+    assert "2026-11-14 15:00" in decision.reason
+
+
+def test_backoff_doubles_and_caps(initialized_db: Path) -> None:
+    """12 h, 24 h, 48 h, then capped at 72 h — retrying a blocked endpoint deepens the block."""
+    conn = connect(initialized_db)
+    try:
+        repo = DuckDBRepository(conn)
+        for index in range(4):
+            run_id = repo.start_run("collect", "{}")
+            repo.finish_run(run_id, status="blocked", n_items=0, watermark=None, error="429")
+            conn.execute(
+                "UPDATE runs SET started_at = ? WHERE run_id = ?",
+                [datetime(2026, 11, 14, 3, index), run_id],
+            )
+    finally:
+        conn.close()
+
+    conn = connect(initialized_db, read_only=True)
+    try:
+        decision = next_batch(
+            conn, CONFIGURED, today=TODAY, now=datetime(2026, 11, 14, 4, 0)
+        )
+        last_block, consecutive = block_history(conn)
+    finally:
+        conn.close()
+
+    assert consecutive == 4
+    assert last_block is not None
+    assert decision.collect is False
+    # 4 blocks -> 12 * 2^3 = 96 h, capped to 72 h after the newest block.
+    assert "2026-11-17 03:03" in decision.reason
+
+
+def test_success_resets_the_backoff(initialized_db: Path) -> None:
+    """A successful run clears the chain, so one block does not wait three days."""
+    conn = connect(initialized_db)
+    try:
+        repo = DuckDBRepository(conn)
+        blocked = repo.start_run("collect", "{}")
+        repo.finish_run(blocked, status="blocked", n_items=0, watermark=None, error="429")
+        conn.execute(
+            "UPDATE runs SET started_at = ? WHERE run_id = ?",
+            [datetime(2026, 11, 14, 3, 0), blocked],
+        )
+        ok_run = repo.start_run("collect", "{}")
+        repo.finish_run(ok_run, status="ok", n_items=5, watermark=None, error=None)
+        conn.execute(
+            "UPDATE runs SET started_at = ? WHERE run_id = ?",
+            [datetime(2026, 11, 14, 9, 0), ok_run],
+        )
+    finally:
+        conn.close()
+
+    conn = connect(initialized_db, read_only=True)
+    try:
+        _, consecutive = block_history(conn)
+        decision = next_batch(
+            conn, CONFIGURED, today=TODAY, now=datetime(2026, 11, 14, 10, 0)
+        )
+    finally:
+        conn.close()
+
+    assert consecutive == 0
+    assert decision.collect is True
+
+
+def test_failed_run_does_not_count_as_a_block(initialized_db: Path) -> None:
+    """A crash says nothing about the rate limit; backing off for it would be the wrong reason."""
+    conn = connect(initialized_db)
+    try:
+        repo = DuckDBRepository(conn)
+        run_id = repo.start_run("collect", "{}")
+        repo.finish_run(run_id, status="failed", n_items=0, watermark=None, error="boom")
+    finally:
+        conn.close()
+
+    conn = connect(initialized_db, read_only=True)
+    try:
+        _, consecutive = block_history(conn)
+    finally:
+        conn.close()
+
+    assert consecutive == 0
 
 
 def test_recent_runs_are_newest_first(initialized_db: Path) -> None:

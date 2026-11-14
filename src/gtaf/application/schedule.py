@@ -12,9 +12,69 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 
-# Measured: ~260 caption payload downloads before HTTP 429, with a cool-down longer than two hours
-# (D-018). 200 leaves margin for listing requests and per-video retries.
+# Measured: ~260 caption payload downloads before HTTP 429 (D-018). 200 leaves margin for listing
+# requests and per-video retries.
 DEFAULT_DAILY_BUDGET = 200
+
+# One batch is deliberately smaller than the budget: a batch that hits the limit mid-channel wastes
+# the remaining capacity, because the run stops rather than partially recording a channel.
+DEFAULT_BATCH_LIMIT = 120
+
+# Measured 2026-11-14: after the collection burst on 13 November, the caption endpoint kept
+# returning HTTP 429 for over 21 hours, including for a single video. The limit is therefore
+# multi-day, not hourly, and a daily retry just re-arms it. Backoff doubles per block, capped at
+# 72 hours.
+DEFAULT_BACKOFF_BASE_HOURS = 12
+MAX_BACKOFF_HOURS = 72
+
+
+def block_history(conn: SqlConnection) -> tuple[datetime | None, int]:
+    """Return the most recent block time and how many collection runs are blocked in a row.
+
+    Args:
+        conn: Read-only connection.
+
+    Returns:
+        ``(last_block_started_at, consecutive_blocks)``. The count stops at the first run that is
+        not ``blocked``, because one success resets the backoff.
+
+    Notes:
+        A ``failed`` run also breaks the chain: a crash says nothing about the rate limit, so
+        treating it as a block would back off for the wrong reason.
+    """
+    rows = conn.execute(
+        "SELECT started_at, status FROM runs WHERE stage = 'collect' "
+        "ORDER BY started_at DESC LIMIT 20"
+    ).fetchall()
+
+    consecutive = 0
+    last_block: datetime | None = None
+    for started_at, status in rows:
+        if str(status) == "blocked":
+            consecutive += 1
+            if last_block is None:
+                last_block = started_at if isinstance(started_at, datetime) else None
+            continue
+        break
+    return last_block, consecutive
+
+
+def backoff_ready_at(
+    last_block: datetime, consecutive: int, *, base_hours: int = DEFAULT_BACKOFF_BASE_HOURS
+) -> datetime:
+    """Return when another collection attempt is allowed.
+
+    Args:
+        last_block: Start time of the most recent blocked run.
+        consecutive: Number of consecutive blocked runs.
+        base_hours: Backoff after the first block; doubles per additional block, capped.
+
+    Returns:
+        The earliest permitted attempt time, in naive UTC.
+    """
+    steps = max(consecutive - 1, 0)
+    wait_hours = min(base_hours * (2**steps), MAX_BACKOFF_HOURS)
+    return last_block + timedelta(hours=wait_hours)
 
 # One batch is deliberately smaller than the budget: a batch that hits the limit mid-channel wastes
 # the remaining capacity, because the run stops rather than partially recording a channel.
@@ -156,6 +216,7 @@ def next_batch(
     budget: int = DEFAULT_DAILY_BUDGET,
     batch_limit: int = DEFAULT_BATCH_LIMIT,
     today: date | None = None,
+    now: datetime | None = None,
 ) -> Decision:
     """Decide whether to collect now, and what.
 
@@ -177,6 +238,25 @@ def next_batch(
     done = collected_today(conn, today=today)
     stale = stale_runs(conn)
     stale_note = f"; {stale} run(s) left in 'running' state" if stale else ""
+
+    # Backoff before budget: a blocked endpoint is the more binding constraint, and retrying while
+    # blocked is what deepens the block (measured: >21 h of 429 after one over-eager burst).
+    last_block, consecutive = block_history(conn)
+    if last_block is not None and consecutive:
+        ready_at = backoff_ready_at(last_block, consecutive)
+        moment = now or datetime.now(UTC).replace(tzinfo=None)
+        if moment < ready_at:
+            return Decision(
+                collect=False,
+                channel_id=None,
+                limit=0,
+                collected_today=done,
+                budget=budget,
+                reason=(
+                    f"backing off after {consecutive} blocked run(s); "
+                    f"next attempt after {ready_at:%Y-%m-%d %H:%M} UTC{stale_note}"
+                ),
+            )
 
     if done >= budget:
         return Decision(
