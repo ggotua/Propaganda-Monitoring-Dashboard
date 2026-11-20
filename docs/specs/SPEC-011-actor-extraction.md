@@ -53,6 +53,8 @@ claim that this person is worth tracking, and the list grows only when a report 
 - **FR-7** WHEN `--audit N` is passed, THE SYSTEM SHALL print up to N fuzzy mentions with their matched
   token, ratio and segment text, because fuzzy matches are the only ones a human needs to review.
 - **FR-8** WHEN the dictionary is missing or empty, THE SYSTEM SHALL fail rather than return an empty scan.
+- **FR-9** WHEN `--spot-check N` is passed, THE SYSTEM SHALL write a deterministic, method-stratified
+  sample of N mentions — every fuzzy match plus a seeded random draw — in a format a human can mark up.
 
 ## 4. Boundaries
 
@@ -116,3 +118,11 @@ Verdict:   PASS
 It does not make the counts publishable. G-5 still requires a 50-mention spot check at agreement ≥ 0.80,
 and the fuzzy workload is only 4 of 332 — so the check will be about the **ending** and **exact** matches,
 which are the vast majority. A person who is not in the dictionary is invisible, so these are lower bounds.
+
+### A defect found by opening the generated file
+
+The first spot-check file showed each row's segment text from the **start**, truncated at 220 characters.
+On inspection, rows 4 and 5 displayed a sentence with no name in it: the match sat later in the segment, so
+a reviewer could not judge the row at all. The renderer now shows a window **around the matched token**, and
+a test asserts the token is always inside the window. This is the same lesson as SPEC-009's div ids —
+generated artefacts must be looked at, not merely produced.

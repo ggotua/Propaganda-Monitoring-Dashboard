@@ -24,7 +24,12 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from gtaf.application.actors import audit_sample, load_actor_config, scan_actors
+from gtaf.application.actors import (
+    audit_sample,
+    load_actor_config,
+    scan_actors,
+    spot_check_sample,
+)
 from gtaf.application.collect import ClientBlockedError, CollectPlan, run_collection
 from gtaf.application.config import ConfigError
 from gtaf.application.initialize import (
@@ -219,6 +224,16 @@ def _build_parser() -> argparse.ArgumentParser:
     actors_cmd.add_argument("--top", type=int, default=15)
     actors_cmd.add_argument(
         "--audit", type=int, default=0, help="print N fuzzy mentions for the G-5 spot check"
+    )
+    actors_cmd.add_argument(
+        "--spot-check",
+        type=int,
+        default=0,
+        help="write a G-5 verification sample of N mentions",
+    )
+    actors_cmd.add_argument(
+        "--out", type=Path, default=Path("reports/g5-spot-check.md"),
+        help="where to write the spot-check file",
     )
 
     return parser
@@ -952,7 +967,15 @@ def _cmd_label_topics(*, db_path: Path, env_file: Path, provider: str, budget: f
     return EXIT_OK
 
 
-def _cmd_actors(*, db_path: Path, config_path: Path, top: int, audit: int) -> int:
+def _cmd_actors(
+    *,
+    db_path: Path,
+    config_path: Path,
+    top: int,
+    audit: int,
+    spot_check: int = 0,
+    out_path: Path | None = None,
+) -> int:
     """Count actor mentions and refuse to present them as publishable (SPEC-011, G-5).
 
     Args:
@@ -960,6 +983,8 @@ def _cmd_actors(*, db_path: Path, config_path: Path, top: int, audit: int) -> in
         config_path: Actor dictionary.
         top: How many actors to print.
         audit: How many fuzzy mentions to print for review.
+        spot_check: How many mentions to write into the G-5 verification file.
+        out_path: Where to write that file.
 
     Returns:
         Process exit code.
@@ -970,6 +995,11 @@ def _cmd_actors(*, db_path: Path, config_path: Path, top: int, audit: int) -> in
         repo = DuckDBRepository(conn)
         scan = scan_actors(repo, actors, method=ACTIVE_SEG_METHOD)
         sample = audit_sample(repo, actors, method=ACTIVE_SEG_METHOD, limit=audit) if audit else ()
+        spot = (
+            spot_check_sample(repo, actors, method=ACTIVE_SEG_METHOD, size=spot_check)
+            if spot_check
+            else ()
+        )
     finally:
         conn.close()
 
@@ -991,6 +1021,31 @@ def _cmd_actors(*, db_path: Path, config_path: Path, top: int, audit: int) -> in
         "\nNOT PUBLISHABLE: G-5 requires a 50-mention spot check at agreement >= 0.80 before any "
         "named claim. These counts are candidates, not findings (ANALYTICAL-POLICY.md)."
     )
+
+    if spot and out_path is not None:
+        lines = [
+            "# G-5 spot check — mark each mention as correct or not",
+            "",
+            f"Sample of {len(spot)} mentions from {scan.analysed_segments} drift segments "
+            f"({scan.matched_segments} segments mention a known actor).",
+            "",
+            "For each row put `y` (this really is that person) or `n` (wrong: another word, an ASR "
+            "artefact, or a different person) in the last column. `fuzzy` rows are weighted in on "
+            "purpose — they are the riskiest class and a random draw would barely contain them.",
+            "",
+            "Agreement = correct / total. The gate needs **>= 0.80**.",
+            "",
+            "| # | actor | matched token | method | segment text | ok? |",
+            "|---|---|---|---|---|---|",
+        ]
+        for row in spot:
+            lines.append(
+                f"| {row.number} | {row.actor_en} | `{row.token}` | {row.method} | "
+                f"{row.text} |  |"
+            )
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print(f"wrote {out_path} ({len(spot)} rows)")
     return EXIT_OK
 
 
@@ -1063,7 +1118,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_runs(db_path=args.db, limit=args.limit)
         if args.command == "actors":
             return _cmd_actors(
-                db_path=args.db, config_path=args.config, top=args.top, audit=args.audit
+                db_path=args.db,
+                config_path=args.config,
+                top=args.top,
+                audit=args.audit,
+                spot_check=args.spot_check,
+                out_path=args.out,
             )
         if args.command == "llm-check":
             return _cmd_llm_check(db_path=args.db, env_file=args.env_file, budget=args.budget)

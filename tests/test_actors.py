@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from gtaf.application.actors import _context_around, spot_check_sample
 from gtaf.domain.actors import (
     Actor,
     find_mentions,
@@ -162,3 +163,58 @@ def test_load_actors_reads_aliases() -> None:
     """Aliases let a full name and a surname point at the same actor."""
     actors = load_actors([{"id": "a", "ka": "სახელი", "en": "Name", "aliases": ["სრული სახელი"]}])
     assert actors[0].aliases == ("სრული სახელი",)
+
+
+class FakeSegmentReader:
+    """Reader returning fixed segment text."""
+
+    def __init__(self, texts: list[str]) -> None:
+        self.texts = texts
+
+    def list_segments(self, method: str | None = None) -> tuple[tuple[str, str], ...]:
+        """Return numbered segments."""
+        return tuple((f"seg{i}", text) for i, text in enumerate(self.texts))
+
+
+def test_spot_check_is_deterministic_for_a_seed() -> None:
+    """A review must be reproducible: the same seed yields the same rows."""
+    reader = FakeSegmentReader([f"სააკაშვილი {i}" for i in range(60)])
+    first = spot_check_sample(reader, (SAKASHVILI,), method="drift", size=10, seed=7)
+    second = spot_check_sample(reader, (SAKASHVILI,), method="drift", size=10, seed=7)
+
+    assert [row.segment_id for row in first] == [row.segment_id for row in second]
+    assert [row.number for row in first] == list(range(1, 11))
+
+
+def test_spot_check_always_includes_fuzzy_matches() -> None:
+    """Fuzzy matches are the riskiest class; a random draw would leave them effectively unverified."""
+    voter = Actor("mdinaradze", "მდინარაძე", "Mdinaradze")
+    # `მდინარაჟ` is one letter off the stem (ძ -> ჟ) and is not a stem+ending form, so it can only
+    # match fuzzily.
+    texts = ["მდინარაძე" for _ in range(40)] + ["მდინარაჟ" for _ in range(2)]
+    sample = spot_check_sample(FakeSegmentReader(texts), (voter,), method="drift", size=10, seed=1)
+
+    assert sum(1 for row in sample if row.method == "fuzzy") == 2
+
+
+def test_spot_check_returns_everything_when_small() -> None:
+    """Fewer mentions than requested means all of them, not padding with repeats."""
+    reader = FakeSegmentReader(["სააკაშვილი", "სააკაშვილი"])
+    sample = spot_check_sample(reader, (SAKASHVILI,), method="drift", size=50)
+
+    assert len(sample) == 2
+
+
+def test_spot_check_empty_corpus() -> None:
+    """No mentions means no sample, not an error."""
+    assert spot_check_sample(FakeSegmentReader([]), (SAKASHVILI,), method="drift") == ()
+
+
+def test_context_window_contains_a_late_token() -> None:
+    """Found by inspecting the first generated file: the match sat past the truncation point."""
+    text = "სიტყვა " * 80 + "კობახიძე" + " კიდევ " * 40
+    window = _context_around(text, "კობახიძე", width=40)
+
+    assert "კობახიძე" in window
+    assert window.startswith("…")
+    assert len(window) < 120

@@ -69,6 +69,143 @@ class ActorScan:
     fuzzy_mentions: int
 
 
+@dataclass(frozen=True, slots=True)
+class SpotRow:
+    """One mention offered for human verification (G-5).
+
+    Attributes:
+        number: Position in the sample, 1-based.
+        actor_en: English name of the matched actor.
+        actor_ka: Georgian name.
+        token: The token that matched, as it appeared in the text.
+        method: ``exact``, ``ending`` or ``fuzzy``.
+        ratio: Match quality.
+        segment_id: Where it came from, so a reviewer can trace it back.
+        text: Segment text, truncated for reading.
+    """
+
+    number: int
+    actor_en: str
+    actor_ka: str
+    token: str
+    method: str
+    ratio: float
+    segment_id: str
+    text: str
+
+
+def collect_mentions(
+    reader: SegmentReader, actors: Sequence[Actor], *, method: str
+) -> tuple[tuple[str, str, object], ...]:
+    """Return every mention as ``(segment_id, segment_text, Mention)``.
+
+    Args:
+        reader: Segment source.
+        actors: Dictionary.
+        method: Segmentation to analyse.
+
+    Returns:
+        Mentions in corpus order.
+    """
+    rows: list[tuple[str, str, object]] = []
+    for segment_id, text in reader.list_segments(method):
+        for mention in find_mentions(text, actors):
+            rows.append((segment_id, text, mention))
+    return tuple(rows)
+
+
+def _context_around(text: str, token: str, *, width: int = 110) -> str:
+    """Return the text around a matched token, with ellipses when trimmed.
+
+    Args:
+        text: Full segment text.
+        token: Matched token.
+        width: Characters to keep on each side.
+
+    Returns:
+        A window that always contains the token.
+
+    Notes:
+        Showing the first N characters instead was a real usability defect found on 2026-11-20: the match
+        frequently sits late in the segment, so the reviewer saw a sentence with no name in it and could
+        not judge the row at all.
+    """
+    cleaned = text.replace("\n", " ")
+    position = cleaned.lower().find(token.lower())
+    if position == -1:
+        return cleaned[: width * 2]
+    start = max(0, position - width)
+    end = min(len(cleaned), position + len(token) + width)
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(cleaned) else ""
+    return f"{prefix}{cleaned[start:end]}{suffix}".replace("|", "\\|")
+
+
+def spot_check_sample(
+    reader: SegmentReader,
+    actors: Sequence[Actor],
+    *,
+    method: str,
+    size: int = 50,
+    seed: int = 42,
+) -> tuple[SpotRow, ...]:
+    """Build a deterministic sample of mentions for the G-5 spot check.
+
+    Args:
+        reader: Segment source.
+        actors: Dictionary.
+        method: Segmentation to analyse.
+        size: How many mentions to offer.
+        seed: Fixed seed, so re-running produces the same sample and a review stays reproducible.
+
+    Returns:
+        The sample, ordered by number.
+
+    Notes:
+        The sample is **stratified on match method**, not fully random. Fuzzy matches are the ones a
+        reviewer must see, and a pure random draw of 50 from 332 would typically contain one or two of
+        them, leaving the riskiest class effectively unverified. Every fuzzy mention is included while
+        the rest is a random draw, so the sample covers both what is frequent and what is doubtful.
+    """
+    name_by_id = {actor.actor_id: actor for actor in actors}
+    mentions = collect_mentions(reader, actors, method=method)
+    if not mentions:
+        return ()
+
+    fuzzy = [row for row in mentions if getattr(row[2], "method", "") == "fuzzy"]
+    others = [row for row in mentions if getattr(row[2], "method", "") != "fuzzy"]
+
+    import random
+
+    rng = random.Random(seed)
+    chosen: list[tuple[str, str, object]] = []
+    if len(fuzzy) >= size:
+        chosen = rng.sample(fuzzy, size)
+    else:
+        chosen = list(fuzzy)
+        remaining = size - len(chosen)
+        if remaining > 0:
+            chosen.extend(rng.sample(others, min(remaining, len(others))))
+    rng.shuffle(chosen)
+
+    rows: list[SpotRow] = []
+    for number, (segment_id, text, mention) in enumerate(chosen[:size], start=1):
+        actor = name_by_id[getattr(mention, "actor_id", "")]
+        rows.append(
+            SpotRow(
+                number=number,
+                actor_en=actor.en,
+                actor_ka=actor.ka,
+                token=str(getattr(mention, "token", "")),
+                method=str(getattr(mention, "method", "")),
+                ratio=float(getattr(mention, "ratio", 0.0)),
+                segment_id=segment_id,
+                text=_context_around(text, str(getattr(mention, "token", ""))),
+            )
+        )
+    return tuple(rows)
+
+
 def load_actor_config(path: Path) -> tuple[Actor, ...]:
     """Read the actor dictionary from YAML.
 
