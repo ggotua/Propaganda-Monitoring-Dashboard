@@ -210,6 +210,18 @@ def test_spot_check_empty_corpus() -> None:
     assert spot_check_sample(FakeSegmentReader([]), (SAKASHVILI,), method="drift") == ()
 
 
+def test_papashvili_is_not_papuashvili() -> None:
+    """Found by the G-5 spot check: two different real people, one deleted უ apart.
+
+    `თამარ პაპაშვილი` is a weather presenter; `შალვა პაპუაშვილი` is the parliament speaker. Merging them
+    would put a broadcaster's weather slot in the speaker's count, so the first four characters of a fuzzy
+    match must be identical.
+    """
+    speaker = Actor("papuashvili", "პაპუაშვილი", "Papuashvili")
+    assert match_token("პაპაშვილი", speaker) is None
+    assert match_token("პაპუაშვილი", speaker) is not None
+
+
 def test_context_window_contains_a_late_token() -> None:
     """Found by inspecting the first generated file: the match sat past the truncation point."""
     text = "სიტყვა " * 80 + "კობახიძე" + " კიდევ " * 40

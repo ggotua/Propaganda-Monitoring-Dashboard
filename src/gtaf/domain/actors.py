@@ -52,6 +52,12 @@ ENDINGS: tuple[str, ...] = (
 # apiece, inflating that actor to 79 segments from 4. No fuzzy matching below 7 characters.
 MIN_FUZZY_LEN = 7
 
+# Characters that must survive exactly for a fuzzy match. Found by the G-5 spot check: `პაპაშვილი`
+# (a weather presenter, თამარ პაპაშვილი) is a different person from `პაპუაშვილი` (the parliament speaker),
+# and one deleted უ made the matcher merge them. Two real people one vowel apart is the worst case for
+# this feature, so the first four characters are not allowed to differ at all.
+FUZZY_PREFIX = 4
+
 # Similarity floor, applied together with edit distance: both must hold. The floor is low on purpose —
 # edit distance does the discrimination, and the measured overlap of a genuine ASR slip
 # (`სააკაშველი` for `სააკაშვილი`) is only 0.84.
@@ -241,7 +247,7 @@ def match_token(token: str, actor: Actor) -> Mention | None:
         if token == stem_value + ending:
             return Mention(actor.actor_id, token, "ending", 1.0)
 
-    if len(stem_value) >= MIN_FUZZY_LEN and token[:1] == stem_value[:1]:
+    if len(stem_value) >= MIN_FUZZY_LEN and token[:FUZZY_PREFIX] == stem_value[:FUZZY_PREFIX]:
         allowed = max_edits(len(stem_value))
         if allowed and _levenshtein(token, stem_value, limit=allowed) <= allowed:
             ratio = _similarity(token, stem_value)

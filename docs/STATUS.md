@@ -107,7 +107,7 @@ were taken during implementation.
 | SPEC-008 | **Approved and implemented** — Streamlit workbench renders the real corpus with the outlier rate on the page; 141 tests |
 | SPEC-009 | **Approved and implemented** — self-contained 4.8 MB HTML report, no external references, outlier rate stated three times (D-021: no Quarto) |
 | SPEC-010 | **Approved and implemented** — paced `next` decision, `runs` history, Task Scheduler script; picks Formula next (0 videos) |
-| SPEC-011 | **Approved and implemented** — dictionary + ending + calibrated fuzzy matching; 332 of 4,837 segments mention a known actor (6.9 %), 4 fuzzy matches to review; **not publishable** until G-5 |
+| SPEC-011 | **Approved and implemented** — dictionary + ending + calibrated fuzzy matching; 330 of 4,837 segments mention a known actor (6.8 %); **G-5 passed at 0.96** (48/50), so named *mentions* may be published — never speech, airtime or sentiment |
 | Analytical policy | **In force** (D-023) — seven numeric publication gates in [`ANALYTICAL-POLICY.md`](ANALYTICAL-POLICY.md); no substantive claim passes them yet |
 | Trunk & release | **`main` created, tagged `v0.1.0`** (D-022); future work on per-SPEC branches merged to `main` |
 | D-007 interpreter chain | **CLOSED 2026-11-13** — full chain imports on Python 3.13.1 (D-019). No fallback to 3.12 |

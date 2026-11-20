@@ -27,7 +27,7 @@ someone likes becomes the finding.
 | Gate | Status | Evidence |
 |---|---|---|
 | G-5, WER half | **PASSES** | 12.3 % WER / 4.3 % CER, 373 words, and that is an *upper bound* because the reference was an edited article (D-028) |
-| G-5, entity half | **OPEN** | requires a 50-mention spot-check at ≥ 0.80; WER cannot certify names |
+| G-5, entity half | **PASSES** (0.96, n=50) | 48/50 correct; Wilson 95 % CI ≈ 0.87–0.99, above the 0.80 bar. Two false positives (same pair of distinct people) fixed afterwards — see `G5-VALIDATION.md` |
 | G-1, G-2 | fail on current data | 38.2 % unclassified; largest topic 5.5 % of 4,837 segments |
 | G-3, G-4 | fail on current data | one channel, 11 days; no trend possible |
 
