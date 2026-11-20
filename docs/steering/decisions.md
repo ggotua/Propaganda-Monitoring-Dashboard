@@ -1056,3 +1056,41 @@ just moves the arbitrary line; disabling the formatter instead would trade one m
 Consequences: prose may exceed 100 columns; code does not. Revisit if a second contributor wants a hard
 column rule for reviews.
 
+---
+
+## D-030: Co-occurrence is counted per broadcast, because per segment there is almost nothing
+
+Status: Accepted (2026-11-20). Measured before writing the default.
+
+Context: SPEC-012 defines an edge as two actors mentioned in the same segment — the strictest, cleanest
+claim ("discussed in the same few seconds"). Implemented and run on the corpus, it produced:
+
+- **21 of 4,837 segments** mention two or more known actors — **0.43 %**, six pairs at min 2;
+- the same data grouped by **video**: **47 of 262 broadcasts** mention two or more — **17.9 %**, 22 repeated
+  pairs, 14 at min 3.
+
+The reason is structural, not a bug: drift segmentation cut the median unit to 52 seconds, and a segment is
+one story. Two named people rarely share one story; a half-hour bulletin mentions several. The stricter
+unit throws away 98 % of the co-occurrence evidence the corpus actually contains.
+
+Decision:
+1. **`unit = video` is the default** for the network, recorded on every result and printed with the
+   denominator. The edge means "mentioned in the same broadcast".
+2. **`unit = segment` stays available** for the strict claim, and the CLI states which is in use.
+3. **Jaccard accompanies every pair**, with both actors' individual counts, because raw co-occurrence ranks
+   fame rather than association.
+
+Rejected:
+- **Keep segment as the default and report six edges** — technically correct and analytically useless; it
+  would have been a chart that says "this corpus has no networks", which is a statement about the unit.
+- **Change the segmentation back to have bigger segments** — that would discard the measured improvement in
+  boundary quality (D-027) to serve a downstream convenience.
+- **Report only raw counts at video level** — with 262 videos and 15 names, counts alone rank whoever is
+  mentioned most; Jaccard shows concentration.
+
+Consequences: every network figure must say "same broadcast", and the wording in the CLI, report and docs
+does. A video-level edge is a much weaker claim than a segment-level one, and the difference is now
+explicit rather than buried in a parameter. Revisit if: the corpus gains channels and months (then segment
+level may become dense enough to be the better default), or the dictionary grows enough that two names
+sharing a story becomes common.
+

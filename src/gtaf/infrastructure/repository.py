@@ -534,6 +534,29 @@ class DuckDBRepository:
             ).fetchall()
         return tuple((str(row[0]), str(row[1])) for row in rows)
 
+    def list_segments_with_video(
+        self, method: str | None = None
+    ) -> tuple[tuple[str, str, str], ...]:
+        """Return segments with their owning video.
+
+        Args:
+            method: Restrict to one ``seg_method``; None returns every method mixed.
+
+        Returns:
+            ``(segment_id, video_id, text)`` in video and time order.
+        """
+        if method is None:
+            rows = self._conn.execute(
+                "SELECT segment_id, video_id, text FROM segments ORDER BY video_id, start_s"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT segment_id, video_id, text FROM segments WHERE seg_method = ? "
+                "ORDER BY video_id, start_s",
+                [method],
+            ).fetchall()
+        return tuple((str(row[0]), str(row[1]), str(row[2])) for row in rows)
+
     def replace_topic_results(
         self,
         run_id: str,

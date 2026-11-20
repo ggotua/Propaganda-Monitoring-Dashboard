@@ -38,6 +38,7 @@ from gtaf.application.initialize import (
     read_schema_version,
 )
 from gtaf.application.methods import ACTIVE_SEG_METHOD
+from gtaf.application.networks import build_network
 from gtaf.application.report import build_report
 from gtaf.application.schedule import (
     DEFAULT_BATCH_LIMIT,
@@ -60,6 +61,7 @@ from gtaf.domain.llm import (
     QuotaExceededError,
 )
 from gtaf.domain.models import Programme
+from gtaf.domain.networks import top_by_jaccard
 from gtaf.domain.segment import MAX_S, MIN_S, TARGET_S
 from gtaf.infrastructure.config_io import load_configuration
 from gtaf.infrastructure.db import (
@@ -234,6 +236,19 @@ def _build_parser() -> argparse.ArgumentParser:
     actors_cmd.add_argument(
         "--out", type=Path, default=Path("reports/g5-spot-check.md"),
         help="where to write the spot-check file",
+    )
+
+    network = sub.add_parser("network", help="actor co-occurrence network (SPEC-012)")
+    network.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    network.add_argument("--config", type=Path, default=Path("config/actors.yaml"))
+    network.add_argument("--min", type=int, default=2, help="minimum shared segments for a pair")
+    network.add_argument("--top", type=int, default=10)
+    network.add_argument("--by", choices=("segments", "jaccard"), default="segments")
+    network.add_argument(
+        "--unit",
+        choices=("video", "segment"),
+        default="video",
+        help="what an edge counts; video is the default because segments are too sparse (D-030)",
     )
 
     return parser
@@ -1061,6 +1076,62 @@ def _cmd_actors(
     return EXIT_OK
 
 
+def _cmd_network(
+    *, db_path: Path, config_path: Path, min_segments: int, top: int, by: str, unit: str
+) -> int:
+    """Print the actor co-occurrence network (SPEC-012).
+
+    Args:
+        db_path: Database file, read-only.
+        config_path: Actor dictionary.
+        min_segments: Minimum shared units for a pair.
+        top: How many pairs to print.
+        by: ``segments`` or ``jaccard`` ordering.
+        unit: ``video`` or ``segment``.
+
+    Returns:
+        Process exit code.
+    """
+    actors = load_actor_config(config_path)
+    names = {actor.actor_id: actor.en for actor in actors}
+    conn = open_database(db_path, read_only=True)
+    try:
+        result = build_network(
+            DuckDBRepository(conn),
+            actors,
+            method=ACTIVE_SEG_METHOD,
+            unit=unit,
+            min_segments=min_segments,
+        )
+    finally:
+        conn.close()
+
+    print(
+        f"segment method: {ACTIVE_SEG_METHOD} | unit: {result.unit} | analysed "
+        f"{result.analysed_units} {result.unit}s | {result.units_with_two_or_more} mention two or more "
+        f"known actors ({result.units_with_two_or_more / max(result.analysed_units, 1):.2%}) | "
+        f"{result.actors_seen} distinct actors | {len(result.pairs)} pair(s) at min {min_segments}"
+    )
+    ranked = (
+        top_by_jaccard(result.pairs, limit=top, min_segments=min_segments)
+        if by == "jaccard"
+        else result.pairs[:top]
+    )
+    print(f"\n{'pair':44} {'both':>5} {'a':>5} {'b':>5} {'jaccard':>8}")
+    for stat in ranked:
+        pair = f"{names.get(stat.a, stat.a)} — {names.get(stat.b, stat.b)}"
+        print(
+            f"{pair[:44]:44} {stat.segments:>5} {stat.a_segments:>5} {stat.b_segments:>5} "
+            f"{stat.jaccard:>8.3f}"
+        )
+    where = "broadcast" if result.unit == "video" else "segment"
+    print(
+        f"\nAn edge means two names appeared in the same {where} — not a relationship, an alliance or "
+        "a conflict. Pairs absent here may be absent from the dictionary rather than from the broadcast."
+    )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -1128,6 +1199,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "network":
+            return _cmd_network(
+                db_path=args.db,
+                config_path=args.config,
+                min_segments=args.min,
+                top=args.top,
+                by=args.by,
+                unit=args.unit,
+            )
         if args.command == "actors":
             return _cmd_actors(
                 db_path=args.db,
