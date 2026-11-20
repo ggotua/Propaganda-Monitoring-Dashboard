@@ -963,3 +963,55 @@ method-scoped (a fixed and a drift segment can begin on the same millisecond), a
 a CHECK constraint, so widening the allowed `seg_method` values required a table rebuild with its index
 dropped first.
 
+---
+
+## D-028: WER is 12.3 % (an upper bound), so NER proceeds with a dictionary — not on raw strings
+
+Status: Accepted (2026-11-20). Measured, then applied to a gate.
+
+Context: G-5 in `ANALYTICAL-POLICY.md` blocks any named claim until caption WER is measured and
+≤ 30 %, plus an entity-level agreement check. WER was the last unmeasured quantity in the pipeline, and
+it needed a human ear: the corpus has **100 % automatic captions and no manual ones**, so there is no
+clean text to compare against.
+
+Measurement (one clip, 373 shared words, reference = the published article about the same report):
+
+| Metric | Raw | With number rules |
+|---|---|---|
+| WER | 13.3 % | **12.3 %** |
+| CER | 4.7 % | **4.3 %** |
+| sub/del/ins | 31/13/6 | 29/11/6 |
+
+Of the 46 errors, roughly **16 are wrong word spacing**, **13 are editorial differences** (the article is
+written prose, not a transcript) and **17 are genuine recognition errors**. Adjusted estimates — labelled
+estimates, not measurements — are ≈8 % ignoring spacing and ≈4–5 % ignoring editorial drift too.
+
+Decision:
+1. **The WER half of G-5 passes** (12.3 % ≤ 30 %, and as an *upper bound* the true ASR rate is lower).
+   NER and actor extraction may be built.
+2. **Not on raw strings.** The dictionary and fuzzy matching are mandatory because the failures are
+   concentrated exactly in names: `დიჰმის` for დირჰამის, `ეშალოვნები` for ეშელონებიდან, plus split names
+   like `ნურმა გომედოვი`. A string-exact lookup would silently drop them.
+3. **The entity half of G-5 stays open.** WER is a word-level average; it cannot certify that *names*
+   are right. The 50-mention ≥ 0.80 agreement check still gates every named claim, and now it is the only
+   thing standing between NER output and a report.
+4. **This number is not the corpus number.** The reference was an article rather than an audio
+   transcript, and the clip was clean narration. Stratified re-measurement (narration / hearing /
+   street) is required before any report cites a WER.
+
+Rejected:
+- **Treating 12.3 % as the error rate.** It is an upper bound that includes editorial rewriting; quoting
+  it as "our captions are 12 % wrong" would overstate the problem in one direction and understate it in
+  another, because the clean-narration sample flatters the corpus.
+- **Waiting for a perfect transcript before building NER.** The gate is a threshold, not a certification;
+  the dictionary requirement absorbs the known failure mode, and the entity check catches the rest.
+- **Extrapolating to the whole corpus.** WER is a function of audio conditions, and those correlate with
+  content — hearings and protests are both the worst audio and the most interesting material.
+
+Consequences: NER work is unblocked with a specified guardrail. The remaining risk is **systematic, not
+random**: if overlapping speech degrades recognition most, and overlapping speech is concentrated in the
+confrontational material this project exists to study, then entity errors will cluster in the most
+reportable content. That is the reason the next measurement is stratified rather than larger. Revisit if:
+the stratified entity-level rate exceeds ~30 % in hearings or street audio, which would make the
+dictionary mandatory *and* force every named claim to state its audio condition.
+

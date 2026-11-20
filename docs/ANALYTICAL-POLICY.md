@@ -22,15 +22,27 @@ someone likes becomes the finding.
 | G-6 | Publish **any** number | denominator + outlier rate + date span + channel count + method version travel with it | A number without its scope is not reproducible and invites the wrong comparison |
 | G-7 | Publish **proportions** | never renormalised to 100 % unless the excluded share is stated in the same sentence | 61 % of segments are placed; a "61 %-normalised" chart silently hides the rest |
 
-## 2. What may be claimed today (2026-11-13)
+## 1a. Gate status as measured (2026-11-20)
+
+| Gate | Status | Evidence |
+|---|---|---|
+| G-5, WER half | **PASSES** | 12.3 % WER / 4.3 % CER, 373 words, and that is an *upper bound* because the reference was an edited article (D-028) |
+| G-5, entity half | **OPEN** | requires a 50-mention spot-check at ≥ 0.80; WER cannot certify names |
+| G-1, G-2 | fail on current data | 38.2 % unclassified; largest topic 5.5 % of 4,837 segments |
+| G-3, G-4 | fail on current data | one channel, 11 days; no trend possible |
+
+WER is measured on **clean narration**. The stratified re-measurement (hearing, street) is pending and
+matters because bad audio correlates with the confrontational content this project studies (D-028).
+
+## 2. What may be claimed today (2026-11-20)
 
 **May be claimed:**
 
 - the pipeline works end to end and is reproducible;
-- on Imedi, 4–13 November 2026, the topic model found 30 clusters over 2,355 segments, with **38.6 %**
-  unclassified and the largest cluster at **7.1 %** of segments;
+- on Imedi, 3–13 November 2026, the topic model found **62 clusters over 4,837 drift segments**, with
+  **38.2 %** unclassified and the largest cluster at **5.5 %** of segments;
 - Georgian YouTube auto-captions were available for 99 of 99 sampled videos and **manual captions for
-  none**;
+  none**, with a measured **WER of 12.3 %** on one clean-narration clip (an upper bound);
 - ~69 % of titles cannot be attributed to a programme from the title alone.
 
 **May not be claimed:**
