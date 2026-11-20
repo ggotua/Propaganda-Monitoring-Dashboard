@@ -622,7 +622,13 @@ def _cmd_topics(*, db_path: Path, log_dir: Path, model: str, min_segments: int, 
 
 
 def _cmd_report(
-    *, db_path: Path, out_path: Path, channel: str | None, since: str | None, until: str | None
+    *,
+    db_path: Path,
+    out_path: Path,
+    channel: str | None,
+    since: str | None,
+    until: str | None,
+    actors_config: Path = Path("config/actors.yaml"),
 ) -> int:
     """Write a self-contained HTML report for a slice (SPEC-009).
 
@@ -632,17 +638,23 @@ def _cmd_report(
         channel: Restrict to one channel id, or None.
         since: Earliest broadcast date, ISO-8601, or None.
         until: Latest broadcast date, ISO-8601, or None.
+        actors_config: Actor dictionary; when present, the report gains a mention table.
 
     Returns:
         Process exit code.
     """
     conn = open_database(db_path, read_only=True)
     try:
+        repo = DuckDBRepository(conn)
+        scan = None
+        if actors_config.exists():
+            scan = scan_actors(repo, load_actor_config(actors_config), method=ACTIVE_SEG_METHOD)
         context = build_report(
             conn,
             channel_id=channel,
             since=date.fromisoformat(since) if since else None,
             until=date.fromisoformat(until) if until else None,
+            actor_scan=scan,
         )
     finally:
         conn.close()

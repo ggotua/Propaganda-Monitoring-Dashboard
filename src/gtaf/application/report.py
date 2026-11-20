@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from gtaf.application import queries
+from gtaf.application.actors import ActorStat
 from gtaf.domain.topics import OUTLIER_TOPIC_ID
 
 
@@ -29,6 +30,9 @@ class ReportContext:
         outlier_rate: Share of segments unclassified in this slice.
         segment_methods: Segmentation methods present, for the methodology block.
         topic_versions: Topic method versions present.
+        actors: Actor mention counts for the slice, largest first; empty when the dictionary was not
+            supplied.
+        actor_segments: Segments mentioning at least one known actor, the denominator's pair.
     """
 
     title: str
@@ -42,6 +46,8 @@ class ReportContext:
     outlier_rate: float
     segment_methods: tuple[str, ...]
     topic_versions: tuple[str, ...]
+    actors: tuple[ActorStat, ...] = ()
+    actor_segments: int = 0
 
     @property
     def is_empty(self) -> bool:
@@ -56,6 +62,7 @@ def build_report(
     since: date | None = None,
     until: date | None = None,
     now: datetime | None = None,
+    actor_scan: object | None = None,
 ) -> ReportContext:
     """Assemble a report for a slice.
 
@@ -65,6 +72,8 @@ def build_report(
         since: Earliest broadcast date, inclusive.
         until: Latest broadcast date, inclusive.
         now: Generation timestamp, injectable so tests are deterministic.
+        actor_scan: Optional :class:`~gtaf.application.actors.ActorScan`; injected rather than computed
+            here because the dictionary lives in configuration, not in the database.
 
     Returns:
         A fully computed report context.
@@ -85,6 +94,12 @@ def build_report(
     shares = tuple(sorted(shares, key=lambda share: (-share.share, share.topic_id)))
     outlier = next((share for share in shares if share.topic_id == OUTLIER_TOPIC_ID), None)
 
+    actor_stats: tuple[ActorStat, ...] = ()
+    actor_segments = 0
+    if actor_scan is not None:
+        actor_stats = getattr(actor_scan, "stats", ())
+        actor_segments = int(getattr(actor_scan, "matched_segments", 0))
+
     return ReportContext(
         title="Georgian TV agenda & framing — topic report",
         generated_at=now or datetime.now(),
@@ -97,4 +112,6 @@ def build_report(
         outlier_rate=outlier.share if outlier else 0.0,
         segment_methods=queries.segment_methods(conn),
         topic_versions=queries.topic_method_versions(conn),
+        actors=actor_stats,
+        actor_segments=actor_segments,
     )

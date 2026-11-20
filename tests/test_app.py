@@ -104,6 +104,21 @@ def test_methodology_note_is_present(app_db: Path) -> None:
     assert "Methodology and caveats" in markdown or "unclassified" in markdown.lower()
 
 
+def test_actor_section_states_what_a_mention_is_not(app_db: Path) -> None:
+    """G-6: the mention table may not appear without its limit stated in the same view.
+
+    A mention count is the easiest number in this project to over-read — it says the name appeared, not
+    that the person spoke, and it covers only dictionary names.
+    """
+    app = AppTest.from_file(APP, default_timeout=60)
+    app.run()
+
+    captions = " ".join(str(block.value) for block in app.caption)
+    assert "Who is mentioned" in [str(block.value) for block in app.subheader] or captions
+    assert "not** that the person spoke" in captions or "not that the person spoke" in captions
+    assert "lower bound" in captions
+
+
 def test_page_shows_an_error_when_database_is_missing(monkeypatch, tmp_path: Path) -> None:
     """A missing database must produce a legible message, not a traceback (FR-7)."""
     monkeypatch.setenv("GTAF_DB", str(tmp_path / "absent.duckdb"))
