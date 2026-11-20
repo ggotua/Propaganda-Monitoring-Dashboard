@@ -85,16 +85,19 @@ def test_short_tail_merges_into_previous() -> None:
     sentences = (
         _sentence(0, 10),
         _sentence(10.5, 25),
-        _sentence(28, 38),   # pause -> 2 segments so far (0-25, 28-38)
-        _sentence(41, 44),   # pause -> would be 3 s tail
+        _sentence(28, 38),  # pause -> 2 segments so far (0-25, 28-38)
+        _sentence(41, 44),  # pause -> would be 3 s tail
     )
     segments = segment_by_pause(sentences, "v1")
 
-    assert all(
-        segment.end_s - segment.start_s >= 15
-        for segment in segments
-        if segment is not segments[-1]
-    ) or len(segments) <= 2
+    assert (
+        all(
+            segment.end_s - segment.start_s >= 15
+            for segment in segments
+            if segment is not segments[-1]
+        )
+        or len(segments) <= 2
+    )
 
 
 def test_spans_tile_the_sentences_in_order() -> None:

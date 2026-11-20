@@ -190,8 +190,7 @@ def main() -> int:
                     tuple(
                         s.text
                         for s in sentences
-                        if s.start_s >= draft.start_s - 0.001
-                        and s.end_s <= draft.end_s + 0.001
+                        if s.start_s >= draft.start_s - 0.001 and s.end_s <= draft.end_s + 0.001
                     )
                 )
             per_method[name]["texts"].extend(groups)  # type: ignore[union-attr]

@@ -67,8 +67,7 @@ def _topic_figure(context: ReportContext, *, inline_js: bool) -> str:
     ]
     values = [share.share * 100 for share in shares]
     colours = [
-        OUTLIER_COLOUR if share.topic_id == OUTLIER_TOPIC_ID else CLUSTER_COLOUR
-        for share in shares
+        OUTLIER_COLOUR if share.topic_id == OUTLIER_TOPIC_ID else CLUSTER_COLOUR for share in shares
     ]
     figure = go.Figure(
         go.Bar(
@@ -183,11 +182,7 @@ def render_html(context: ReportContext) -> str:
             "<tr>"
             f"<td>{'UNCLASSIFIED' if share.topic_id == OUTLIER_TOPIC_ID else 't' + str(share.topic_id)}</td>"
             f"<td>{escape(share.label or '')}"
-            + (
-                f'<br><span class="muted">{escape(share.label_en)}</span>'
-                if share.label_en
-                else ""
-            )
+            + (f'<br><span class="muted">{escape(share.label_en)}</span>' if share.label_en else "")
             + "</td>"
             f"<td>{share.n_segments}</td>"
             f"<td>{share.share:.1%}</td>"
@@ -196,12 +191,12 @@ def render_html(context: ReportContext) -> str:
             for share in context.shares
         )
         body = (
-            '<h2>Topic distribution</h2>'
+            "<h2>Topic distribution</h2>"
             + _topic_figure(context, inline_js=True)
             + "<h2>Clustered vs unclassified, by channel</h2>"
             + _coverage_figure(context)
             + "<h2>Topics in this slice</h2>"
-            + '<table><thead><tr><th>Topic</th><th>Label</th><th>Segments</th><th>Share</th>'
+            + "<table><thead><tr><th>Topic</th><th>Label</th><th>Segments</th><th>Share</th>"
             + "<th>Keywords</th></tr></thead><tbody>"
             + rows
             + "</tbody></table>"

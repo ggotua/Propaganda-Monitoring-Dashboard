@@ -76,14 +76,12 @@ def test_machine_derived_notice_and_scope_present() -> None:
     assert "Machine-derived figures" in html
     assert "Imedi" in html
     assert "2026-11-01" in html
-    assert "lang=\"en\"" in html
+    assert 'lang="en"' in html
 
 
 def test_corpus_text_is_escaped() -> None:
     """FR-6: topic labels are ASR keywords, not trusted markup."""
-    hostile = (
-        queries.TopicShare(0, "<script>alert(1)</script>", ("<b>bold</b>",), 1, 1.0),
-    )
+    hostile = (queries.TopicShare(0, "<script>alert(1)</script>", ("<b>bold</b>",), 1, 1.0),)
     html = render_html(_context(hostile))
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html

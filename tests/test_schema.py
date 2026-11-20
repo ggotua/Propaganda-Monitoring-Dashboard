@@ -60,17 +60,13 @@ def test_caption_with_zero_length_is_rejected(initialized_db: Path) -> None:
     """Case 11: the boundary itself is invalid — must be strictly greater, not >=."""
     conn = connect(initialized_db)
     try:
-        conn.execute(
-            "INSERT INTO channels VALUES ('imedi', 'Imedi', NULL, '@tvimedi', NULL, TRUE)"
-        )
+        conn.execute("INSERT INTO channels VALUES ('imedi', 'Imedi', NULL, '@tvimedi', NULL, TRUE)")
         conn.execute(
             "INSERT INTO videos VALUES ('v1', 'imedi', NULL, '2026-10-01 19:00:00', "
             "'2026-10-01', 't', 60, 'auto', 'ka', 'captioned', '2026-10-01 20:00:00')"
         )
         with pytest.raises(duckdb.Error):
-            conn.execute(
-                "INSERT INTO captions VALUES ('v1', 0, 1.0, 1.0, 'hello')"
-            )
+            conn.execute("INSERT INTO captions VALUES ('v1', 0, 1.0, 1.0, 'hello')")
     finally:
         conn.close()
 
@@ -79,9 +75,7 @@ def test_caption_just_above_boundary_is_accepted(initialized_db: Path) -> None:
     """Case 12: one thousandth of a second above the boundary is valid."""
     conn = connect(initialized_db)
     try:
-        conn.execute(
-            "INSERT INTO channels VALUES ('imedi', 'Imedi', NULL, '@tvimedi', NULL, TRUE)"
-        )
+        conn.execute("INSERT INTO channels VALUES ('imedi', 'Imedi', NULL, '@tvimedi', NULL, TRUE)")
         conn.execute(
             "INSERT INTO videos VALUES ('v1', 'imedi', NULL, '2026-10-01 19:00:00', "
             "'2026-10-01', 't', 60, 'auto', 'ka', 'captioned', '2026-10-01 20:00:00')"

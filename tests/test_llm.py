@@ -78,9 +78,7 @@ def _completion(text: str = "OK") -> Completion:
     return Completion(text=text, usage=Usage(3, 2, 5))
 
 
-def _gateway(
-    transport: FakeTransport, store: FakeStore, *, budget: float = 20.0
-) -> Gateway:
+def _gateway(transport: FakeTransport, store: FakeStore, *, budget: float = 20.0) -> Gateway:
     """Build a gateway over one provider."""
     return Gateway(
         {"gemini": transport},
@@ -193,9 +191,7 @@ def test_retired_model_falls_back_to_the_next() -> None:
 
 def test_quota_error_stops_the_chain() -> None:
     """FR-5: a 429 is not dodged by rotating models — that is how a quota becomes a block."""
-    transport = FakeTransport(
-        {"model-a": QuotaExceededError("HTTP 429"), "model-b": _completion()}
-    )
+    transport = FakeTransport({"model-a": QuotaExceededError("HTTP 429"), "model-b": _completion()})
     store = FakeStore()
 
     with pytest.raises(QuotaExceededError):
@@ -251,7 +247,13 @@ def test_unknown_provider_is_reported() -> None:
 
 def test_no_key_appears_in_a_quota_error() -> None:
     """FR-8: exceptions carry the provider body, never request headers."""
-    transport = FakeTransport({"model-a": QuotaExceededError("HTTP 429 quota exhausted: {}",)})
+    transport = FakeTransport(
+        {
+            "model-a": QuotaExceededError(
+                "HTTP 429 quota exhausted: {}",
+            )
+        }
+    )
     try:
         _gateway(transport, FakeStore()).ask("prompt", prompt_version="v1", provider="gemini")
     except QuotaExceededError as exc:

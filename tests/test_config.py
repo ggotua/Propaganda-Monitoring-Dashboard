@@ -170,9 +170,7 @@ def test_unsupported_config_schema_version_is_rejected(config_factory) -> None:
     directory = config_factory(
         [{"channel_id": "imedi", "name_en": "Imedi", "youtube_handle": "@tvimedi"}], []
     )
-    (directory / "channels.yaml").write_text(
-        "schema_version: 99\nchannels: []\n", encoding="utf-8"
-    )
+    (directory / "channels.yaml").write_text("schema_version: 99\nchannels: []\n", encoding="utf-8")
     with pytest.raises(ConfigError) as excinfo:
         load_configuration(directory)
     assert any("schema_version" in message for message in excinfo.value.violations)

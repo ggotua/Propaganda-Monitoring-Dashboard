@@ -172,8 +172,10 @@ def match_programme(title: str, programmes: Sequence[Programme]) -> str | None:
         for pattern in programme.title_patterns:
             if pattern and pattern.casefold() in lowered:
                 candidate = (len(pattern), programme.programme_id)
-                if best is None or candidate[0] > best[0] or (
-                    candidate[0] == best[0] and candidate[1] < best[1]
+                if (
+                    best is None
+                    or candidate[0] > best[0]
+                    or (candidate[0] == best[0] and candidate[1] < best[1])
                 ):
                     best = candidate
     return best[1] if best else None

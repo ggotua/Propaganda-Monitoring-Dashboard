@@ -161,9 +161,7 @@ def pick_caption(info: dict[str, Any]) -> tuple[str, str]:
     def transcripts(tracks: dict[str, Any]) -> dict[str, Any]:
         """Drop non-transcript tracks (live chat) from a caption dictionary."""
         return {
-            key: value
-            for key, value in tracks.items()
-            if key.casefold() not in NON_TRANSCRIPT_KEYS
+            key: value for key, value in tracks.items() if key.casefold() not in NON_TRANSCRIPT_KEYS
         }
 
     for source_kind, tracks in (("manual", transcripts(manual)), ("auto", transcripts(auto))):
@@ -275,26 +273,40 @@ def probe(argv: list[str] | None = None) -> int:
         Process exit code: 0 on completion, 1 when blocked or unable to start.
     """
     parser = argparse.ArgumentParser(description="Caption availability feasibility probe")
-    parser.add_argument("--per-category", type=int, default=20,
-                        help="Videos to keep per programme type per channel")
-    parser.add_argument("--since", default="2026-10-01",
-                        help="Earliest publish date (ISO), inclusive")
-    parser.add_argument("--throttle", type=float, default=2.0,
-                        help="Seconds to wait after every network call")
-    parser.add_argument("--listing-limit", type=int, default=120,
-                        help="Recent uploads to enumerate per channel")
-    parser.add_argument("--max-extract-per-channel", type=int, default=80,
-                        help="Hard ceiling on per-video extractions per channel")
-    parser.add_argument("--unclassified-sample", type=int, default=0,
-                        help="Also sample this many UNCLASSIFIED videos per channel. Without it "
-                             "the caption rate is measured only on videos that matched a "
-                             "programme, which is a selection bias: the unclassified majority "
-                             "goes unchecked.")
-    parser.add_argument("--config-dir", default="config",
-                        help="Directory holding channels.yaml and programmes.yaml")
+    parser.add_argument(
+        "--per-category", type=int, default=20, help="Videos to keep per programme type per channel"
+    )
+    parser.add_argument(
+        "--since", default="2026-10-01", help="Earliest publish date (ISO), inclusive"
+    )
+    parser.add_argument(
+        "--throttle", type=float, default=2.0, help="Seconds to wait after every network call"
+    )
+    parser.add_argument(
+        "--listing-limit", type=int, default=120, help="Recent uploads to enumerate per channel"
+    )
+    parser.add_argument(
+        "--max-extract-per-channel",
+        type=int,
+        default=80,
+        help="Hard ceiling on per-video extractions per channel",
+    )
+    parser.add_argument(
+        "--unclassified-sample",
+        type=int,
+        default=0,
+        help="Also sample this many UNCLASSIFIED videos per channel. Without it "
+        "the caption rate is measured only on videos that matched a "
+        "programme, which is a selection bias: the unclassified majority "
+        "goes unchecked.",
+    )
+    parser.add_argument(
+        "--config-dir", default="config", help="Directory holding channels.yaml and programmes.yaml"
+    )
     parser.add_argument("--out", default="data/feasibility/captions.csv", help="CSV output path")
-    parser.add_argument("--errors", default="data/feasibility/probe_errors.jsonl",
-                        help="Per-video error log path")
+    parser.add_argument(
+        "--errors", default="data/feasibility/probe_errors.jsonl", help="Per-video error log path"
+    )
     args = parser.parse_args(argv)
 
     since = date.fromisoformat(args.since)
@@ -327,8 +339,11 @@ def probe(argv: list[str] | None = None) -> int:
     for channel in config.channels:
         name = channel.name_en
         channel_programmes = programmes_by_channel.get(channel.channel_id, [])
-        print(f"[{name}] {len(channel_programmes)} programme(s); listing "
-              f"{args.listing_limit} uploads from {channel.youtube_handle}", file=sys.stderr)
+        print(
+            f"[{name}] {len(channel_programmes)} programme(s); listing "
+            f"{args.listing_limit} uploads from {channel.youtube_handle}",
+            file=sys.stderr,
+        )
         try:
             uploads = list_recent_uploads(ydl_flat, channel.youtube_handle, args.listing_limit)
         except Exception as exc:  # noqa: BLE001 - classified below, not swallowed
@@ -424,8 +439,11 @@ def probe(argv: list[str] | None = None) -> int:
         )
 
     _write_outputs(out_path, err_path, rows, errors)
-    print(f"wrote {len(rows)} rows to {out_path}; {len(errors)} errors; "
-          f"{unclassified} title(s) matched no programme", file=sys.stderr)
+    print(
+        f"wrote {len(rows)} rows to {out_path}; {len(errors)} errors; "
+        f"{unclassified} title(s) matched no programme",
+        file=sys.stderr,
+    )
     return 0
 
 

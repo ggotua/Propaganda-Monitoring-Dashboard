@@ -40,9 +40,7 @@ class TopicLabelRepository(Protocol):
         """Return ``(topic_id, label_ka, keywords, n_segments)`` rows."""
         ...
 
-    def update_topic_labels(
-        self, run_id: str, labels: Mapping[int, tuple[str, str | None]]
-    ) -> int:
+    def update_topic_labels(self, run_id: str, labels: Mapping[int, tuple[str, str | None]]) -> int:
         """Write labels for a run and return the number of rows updated."""
         ...
 
@@ -99,7 +97,7 @@ def parse_label(text: str) -> tuple[str, str | None] | None:
 
     Notes:
         A reply that cannot be parsed is not repaired by guessing: the topic keeps its keyword
-        label, which is honest, rather than receiving a name the model did not propose.    """
+        label, which is honest, rather than receiving a name the model did not propose."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("```")[1] if "```" in cleaned[3:] else cleaned[3:]

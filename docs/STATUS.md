@@ -100,13 +100,14 @@ were taken during implementation.
 | SPEC-001 | **Approved and implemented** — evidence in the spec's Implementation Status |
 | SPEC-002 | **Approved and implemented** — collector works live; 90 tests; evidence in the spec |
 | SPEC-003 | **Approved and implemented** — cues → sentences, 122 tests, spot-checked on a real bulletin |
-| SPEC-004 | **Approved and implemented** — 2,355 fixed-window segments over 262 videos; temporary by design (SPEC-006 replaces it) |
-| Schema | **v2** — migration chain in place; `topics`/`res_topics` added; the live database migrated in place with all 263 videos and 2,355 segments intact |
-| SPEC-007 | **Approved and implemented** — 30 topics over 2,355 segments, **38.6 % outliers**, mpnet chosen on measurement (D-020) |
+| SPEC-004 | **Approved and implemented** — fixed-window segmentation, now the **control** (2,355 segments kept side by side with drift) |
+| Schema | **v3** — migration 003 rebuilt `segments` to allow `drift`/`pause`; 263 videos and 2,355 control segments carried over |
+| SPEC-005 | **Approved and implemented** — gateway with cache, budget guard, model fallback; live check on both providers; topics labelled ka+en for $0.0046 (D-025, D-026) |
+| SPEC-007 | **Approved and implemented** — 62 topics over 4,837 drift segments, **38.2 % outliers**, mpnet chosen on measurement (D-020) |
 | SPEC-008 | **Approved and implemented** — Streamlit workbench renders the real corpus with the outlier rate on the page; 141 tests |
 | SPEC-009 | **Approved and implemented** — self-contained 4.8 MB HTML report, no external references, outlier rate stated three times (D-021: no Quarto) |
 | SPEC-010 | **Approved and implemented** — paced `next` decision, `runs` history, Task Scheduler script; picks Formula next (0 videos) |
-| SPEC-005 | **Approved and implemented** — gateway with cache, budget guard, model fallback; live check on both providers; 30 topics labelled ka+en for $0.0046 (D-026: free quota is ~11 calls/day, so batches run on DeepSeek) |
+| SPEC-011 | **Approved and implemented** — dictionary + ending + calibrated fuzzy matching; 332 of 4,837 segments mention a known actor (6.9 %), 4 fuzzy matches to review; **not publishable** until G-5 |
 | Analytical policy | **In force** (D-023) — seven numeric publication gates in [`ANALYTICAL-POLICY.md`](ANALYTICAL-POLICY.md); no substantive claim passes them yet |
 | Trunk & release | **`main` created, tagged `v0.1.0`** (D-022); future work on per-SPEC branches merged to `main` |
 | D-007 interpreter chain | **CLOSED 2026-11-13** — full chain imports on Python 3.13.1 (D-019). No fallback to 3.12 |

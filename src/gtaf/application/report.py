@@ -83,9 +83,7 @@ def build_report(
 
     shares = queries.topic_shares(conn, channel_id=channel_id, since=since, until=until)
     shares = tuple(sorted(shares, key=lambda share: (-share.share, share.topic_id)))
-    outlier = next(
-        (share for share in shares if share.topic_id == OUTLIER_TOPIC_ID), None
-    )
+    outlier = next((share for share in shares if share.topic_id == OUTLIER_TOPIC_ID), None)
 
     return ReportContext(
         title="Georgian TV agenda & framing — topic report",

@@ -35,9 +35,7 @@ class FileRawStore:
         """
         return self._root / channel_id / local_date.isoformat() / f"{video_id}.json3"
 
-    def write_once(
-        self, channel_id: str, local_date: date, video_id: str, payload: str
-    ) -> bool:
+    def write_once(self, channel_id: str, local_date: date, video_id: str, payload: str) -> bool:
         """Create the payload file if and only if it does not exist.
 
         Args:

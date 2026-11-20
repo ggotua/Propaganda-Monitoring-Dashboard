@@ -117,8 +117,7 @@ def _entries(doc: Any, key: str, filename: str, violations: list[str]) -> list[A
     version = doc.get("schema_version")
     if version != CONFIG_SCHEMA_VERSION:
         violations.append(
-            f"{filename}: unsupported schema_version {version!r} "
-            f"(expected {CONFIG_SCHEMA_VERSION})"
+            f"{filename}: unsupported schema_version {version!r} (expected {CONFIG_SCHEMA_VERSION})"
         )
     raw = doc.get(key)
     if not isinstance(raw, list):

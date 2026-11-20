@@ -86,9 +86,7 @@ class VideoSource(Protocol):
 class RawStore(Protocol):
     """Immutable store for original caption payloads (SPEC-002 §3.4)."""
 
-    def write_once(
-        self, channel_id: str, local_date: date, video_id: str, payload: str
-    ) -> bool:
+    def write_once(self, channel_id: str, local_date: date, video_id: str, payload: str) -> bool:
         """Write a payload only if no file exists yet.
 
         Args:
@@ -297,8 +295,14 @@ def collect_channel(
             # the feasibility probe lacked, which cost it a 240-video run over one age-gated video.
             report.skipped += 1
             report.errors.append(f"{upload.video_id}: {exc}"[:300])
-            log_event(logger, logging.WARNING, "collect.video_skipped",
-                      channel=channel.channel_id, video_id=upload.video_id, error=str(exc)[:200])
+            log_event(
+                logger,
+                logging.WARNING,
+                "collect.video_skipped",
+                channel=channel.channel_id,
+                video_id=upload.video_id,
+                error=str(exc)[:200],
+            )
             continue
 
         meta = fetched.meta
@@ -370,8 +374,7 @@ def run_collection(
         ClientBlockedError: After the run row is marked ``blocked``, so a scheduler can see why.
     """
     params = json.dumps(
-        {"since": plan.since.isoformat(), "limit": plan.limit,
-         "listing_limit": plan.listing_limit},
+        {"since": plan.since.isoformat(), "limit": plan.limit, "listing_limit": plan.listing_limit},
         sort_keys=True,
     )
     run_id = repo.start_run("collect", params)

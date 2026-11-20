@@ -76,6 +76,7 @@ def backoff_ready_at(
     wait_hours = min(base_hours * (2**steps), MAX_BACKOFF_HOURS)
     return last_block + timedelta(hours=wait_hours)
 
+
 # One batch is deliberately smaller than the budget: a batch that hits the limit mid-channel wastes
 # the remaining capacity, because the run stops rather than partially recording a channel.
 DEFAULT_BATCH_LIMIT = 120
@@ -174,9 +175,7 @@ def channel_totals(
         scheduler pick the best-covered channel first — measured on 2026-11-13, when five of six
         channels had zero videos.
     """
-    rows = conn.execute(
-        "SELECT channel_id, count(*) FROM videos GROUP BY 1"
-    ).fetchall()
+    rows = conn.execute("SELECT channel_id, count(*) FROM videos GROUP BY 1").fetchall()
     counts = {str(row[0]): _as_int(row[1]) for row in rows}
     totals = [
         (channel_id, name_en, counts.get(channel_id, 0)) for channel_id, name_en in configured

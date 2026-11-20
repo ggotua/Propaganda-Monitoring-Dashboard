@@ -34,8 +34,8 @@ def test_no_assignment_has_a_value() -> None:
         if match and match.group("value").strip():
             offenders.append(f"line {number}: {match.group('name')} has a value")
 
-    assert not offenders, (
-        "Do not put secrets in .env.example (it is tracked by git): " + "; ".join(offenders)
+    assert not offenders, "Do not put secrets in .env.example (it is tracked by git): " + "; ".join(
+        offenders
     )
 
 

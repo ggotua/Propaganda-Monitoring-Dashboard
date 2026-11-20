@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from gtaf.application.actors import audit_sample, load_actor_config, scan_actors
 from gtaf.application.collect import ClientBlockedError, CollectPlan, run_collection
 from gtaf.application.config import ConfigError
 from gtaf.application.initialize import (
@@ -31,6 +32,7 @@ from gtaf.application.initialize import (
     migrate_database,
     read_schema_version,
 )
+from gtaf.application.methods import ACTIVE_SEG_METHOD
 from gtaf.application.report import build_report
 from gtaf.application.schedule import (
     DEFAULT_BATCH_LIMIT,
@@ -110,23 +112,40 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     collect = sub.add_parser("collect", help="collect videos and captions for in-window videos")
-    collect.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"),
-                         help="database file (default: data/gtaf.duckdb)")
+    collect.add_argument(
+        "--db",
+        type=Path,
+        default=Path("data/gtaf.duckdb"),
+        help="database file (default: data/gtaf.duckdb)",
+    )
     collect.add_argument("--config-dir", type=Path, default=Path("config"))
     collect.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
     collect.add_argument("--log-dir", type=Path, default=Path("logs"))
-    collect.add_argument("--channel", default=None,
-                         help="collect a single channel_id instead of all active channels")
+    collect.add_argument(
+        "--channel", default=None, help="collect a single channel_id instead of all active channels"
+    )
     collect.add_argument("--since", default="2026-10-01", help="earliest publish date (ISO)")
-    collect.add_argument("--limit", type=int, default=20,
-                         help="maximum videos kept per channel (default: 20)")
-    collect.add_argument("--listing-limit", type=int, default=120,
-                         help="maximum uploads listed per channel; bounds pagination")
-    collect.add_argument("--throttle", type=float, default=2.0,
-                         help="seconds to sleep after every network call (default: 2.0)")
-    collect.add_argument("--skip-existing", action="store_true",
-                         help="do not re-fetch videos already in the database (makes a long "
-                              "backfill resumable after an interruption)")
+    collect.add_argument(
+        "--limit", type=int, default=20, help="maximum videos kept per channel (default: 20)"
+    )
+    collect.add_argument(
+        "--listing-limit",
+        type=int,
+        default=120,
+        help="maximum uploads listed per channel; bounds pagination",
+    )
+    collect.add_argument(
+        "--throttle",
+        type=float,
+        default=2.0,
+        help="seconds to sleep after every network call (default: 2.0)",
+    )
+    collect.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="do not re-fetch videos already in the database (makes a long "
+        "backfill resumable after an interruption)",
+    )
 
     text = sub.add_parser("text", help="print normalised sentences for one video (read-only)")
     text.add_argument("--video-id", required=True, help="YouTube video id")
@@ -194,6 +213,14 @@ def _build_parser() -> argparse.ArgumentParser:
     label.add_argument("--provider", default="gemini")
     label.add_argument("--budget", type=float, default=None, help="monthly cap in USD")
 
+    actors_cmd = sub.add_parser("actors", help="count actor mentions over segments (SPEC-011)")
+    actors_cmd.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    actors_cmd.add_argument("--config", type=Path, default=Path("config/actors.yaml"))
+    actors_cmd.add_argument("--top", type=int, default=15)
+    actors_cmd.add_argument(
+        "--audit", type=int, default=0, help="print N fuzzy mentions for the G-5 spot check"
+    )
+
     return parser
 
 
@@ -224,9 +251,7 @@ def _cmd_init_db(path: Path, log_dir: Path) -> int:
             f"applied {len(result.applied)} migration(s))"
         )
     else:
-        log_event(
-            logger, 20, "db.opened", path=str(path), schema_version=result.to_version
-        )
+        log_event(logger, 20, "db.opened", path=str(path), schema_version=result.to_version)
         print(f"{path} already at schema_version={result.to_version}; nothing to do")
     return EXIT_OK
 
@@ -245,10 +270,7 @@ def _cmd_schema_version(path: Path) -> int:
 def _cmd_check_config(config_dir: Path) -> int:
     """Validate configuration and report counts (FR-7)."""
     bundle = load_configuration(config_dir)
-    print(
-        f"configuration OK: {bundle.channel_count} channels, "
-        f"{bundle.programme_count} programmes"
-    )
+    print(f"configuration OK: {bundle.channel_count} channels, {bundle.programme_count} programmes")
     return EXIT_OK
 
 
@@ -272,8 +294,12 @@ def _cmd_doctor(as_json: bool, data_dir: Path) -> int:
             module = importlib.import_module(module_name)
         except Exception as exc:  # noqa: BLE001 - a failed import is the result being reported
             checks.append(
-                {"name": module_name, "ok": False, "detail": f"{type(exc).__name__}: {exc}",
-                 "required": "importable"}
+                {
+                    "name": module_name,
+                    "ok": False,
+                    "detail": f"{type(exc).__name__}: {exc}",
+                    "required": "importable",
+                }
             )
         else:
             checks.append(
@@ -286,8 +312,14 @@ def _cmd_doctor(as_json: bool, data_dir: Path) -> int:
             )
 
     probe_ok, probe_detail = _write_probe(data_dir)
-    checks.append({"name": "db_write_probe", "ok": probe_ok, "detail": probe_detail,
-                   "required": "can create a database file"})
+    checks.append(
+        {
+            "name": "db_write_probe",
+            "ok": probe_ok,
+            "detail": probe_detail,
+            "required": "can create a database file",
+        }
+    )
 
     ok = all(bool(check["ok"]) for check in checks)
 
@@ -504,7 +536,12 @@ def _cmd_segment(
             if written == 0:
                 empty += 1
         log_event(
-            logger, 20, "segment.done", videos=len(targets), segments=total, empty=empty,
+            logger,
+            20,
+            "segment.done",
+            videos=len(targets),
+            segments=total,
+            empty=empty,
             method=method,
         )
     finally:
@@ -514,9 +551,7 @@ def _cmd_segment(
     return EXIT_OK
 
 
-def _cmd_topics(
-    *, db_path: Path, log_dir: Path, model: str, min_segments: int, top: int
-) -> int:
+def _cmd_topics(*, db_path: Path, log_dir: Path, model: str, min_segments: int, top: int) -> int:
     """Cluster segments into topics and persist the assignments (SPEC-007 FR-1…FR-7).
 
     Args:
@@ -828,9 +863,7 @@ def _cmd_llm_benchmark(
             )
             for provider in ("gemini", "deepseek"):
                 try:
-                    response = gateway.ask(
-                        prompt, prompt_version="label-v1", provider=provider
-                    )
+                    response = gateway.ask(prompt, prompt_version="label-v1", provider=provider)
                     rows.append(
                         _BenchRow(
                             segment=segment_id,
@@ -884,9 +917,7 @@ def _cmd_llm_benchmark(
     return EXIT_OK
 
 
-def _cmd_label_topics(
-    *, db_path: Path, env_file: Path, provider: str, budget: float | None
-) -> int:
+def _cmd_label_topics(*, db_path: Path, env_file: Path, provider: str, budget: float | None) -> int:
     """Give every topic a Georgian and English name through the gateway.
 
     Args:
@@ -918,6 +949,48 @@ def _cmd_label_topics(
         print(f"  {marker:>7} {n_segments:>5}{english}")
         if keywords:
             print(f"  {'':>13}{', '.join(keywords[:6])}")
+    return EXIT_OK
+
+
+def _cmd_actors(*, db_path: Path, config_path: Path, top: int, audit: int) -> int:
+    """Count actor mentions and refuse to present them as publishable (SPEC-011, G-5).
+
+    Args:
+        db_path: Database file, read-only.
+        config_path: Actor dictionary.
+        top: How many actors to print.
+        audit: How many fuzzy mentions to print for review.
+
+    Returns:
+        Process exit code.
+    """
+    actors = load_actor_config(config_path)
+    conn = open_database(db_path, read_only=True)
+    try:
+        repo = DuckDBRepository(conn)
+        scan = scan_actors(repo, actors, method=ACTIVE_SEG_METHOD)
+        sample = audit_sample(repo, actors, method=ACTIVE_SEG_METHOD, limit=audit) if audit else ()
+    finally:
+        conn.close()
+
+    print(
+        f"segment method: {ACTIVE_SEG_METHOD} | analysed {scan.analysed_segments} segments | "
+        f"{scan.matched_segments} mention at least one known actor "
+        f"({scan.matched_segments / max(scan.analysed_segments, 1):.1%})"
+    )
+    print(f"\n{'actor':18} {'role':18} {'segments':>8} {'share':>7} {'fuzzy':>6}")
+    for stat in scan.stats[:top]:
+        print(
+            f"{stat.en:18} {stat.role[:18]:18} {stat.segments:>8} {stat.share:>6.1%} "
+            f"{stat.fuzzy:>6}"
+        )
+    print(f"\nfuzzy matches needing review: {scan.fuzzy_mentions}")
+    for line in sample:
+        print(line)
+    print(
+        "\nNOT PUBLISHABLE: G-5 requires a 50-mention spot check at agreement >= 0.80 before any "
+        "named claim. These counts are candidates, not findings (ANALYTICAL-POLICY.md)."
+    )
     return EXIT_OK
 
 
@@ -988,10 +1061,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
-        if args.command == "llm-check":
-            return _cmd_llm_check(
-                db_path=args.db, env_file=args.env_file, budget=args.budget
+        if args.command == "actors":
+            return _cmd_actors(
+                db_path=args.db, config_path=args.config, top=args.top, audit=args.audit
             )
+        if args.command == "llm-check":
+            return _cmd_llm_check(db_path=args.db, env_file=args.env_file, budget=args.budget)
         if args.command == "llm-benchmark":
             return _cmd_llm_benchmark(
                 db_path=args.db,
@@ -1008,7 +1083,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 budget=args.budget,
             )
         if args.command == "collect":
-            return _cmd_collect(                config_dir=args.config_dir,
+            return _cmd_collect(
+                config_dir=args.config_dir,
                 db_path=args.db,
                 raw_dir=args.raw_dir,
                 log_dir=args.log_dir,

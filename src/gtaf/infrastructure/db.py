@@ -59,9 +59,7 @@ def connect(db_path: Path, *, read_only: bool = False) -> duckdb.DuckDBPyConnect
         DatabaseLockedError: If another process holds the write lock.
     """
     if read_only and not db_path.exists():
-        raise DatabaseNotFoundError(
-            f"database not found: {db_path} (run `gtaf init-db` first)"
-        )
+        raise DatabaseNotFoundError(f"database not found: {db_path} (run `gtaf init-db` first)")
     try:
         return duckdb.connect(str(db_path), read_only=read_only)
     except duckdb.Error as exc:

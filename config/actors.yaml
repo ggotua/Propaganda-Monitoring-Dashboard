@@ -1,0 +1,91 @@
+# Seed actor dictionary (SPEC-011). See docs/ACTORS.md for the format and the rule for adding names.
+
+- id: saakashvili
+  ka: სააკაშვილი
+  en: Saakashvili
+  role: ex-president
+  aliases: [მიხეილ სააკაშვილი]
+
+- id: ivanishvili
+  ka: ივანიშვილი
+  en: Ivanishvili
+  role: party founder
+  aliases: [ბიძინა ივანიშვილი]
+
+- id: zourabichvili
+  ka: ზურაბიშვილი
+  en: Zourabichvili
+  role: ex-president
+  aliases: [სალომე ზურაბიშვილი]
+
+- id: kobakhidze
+  ka: კობახიძე
+  en: Kobakhidze
+  role: prime minister
+  aliases: [ირაკლი კობახიძე]
+
+- id: gakharia
+  ka: გახარია
+  en: Gakharia
+  role: opposition leader
+  aliases: [გიორგი გახარია]
+
+- id: melia
+  ka: მელია
+  en: Melia
+  role: opposition leader
+  aliases: [ნიკა მელია]
+
+- id: mdinaradze
+  ka: მდინარაძე
+  en: Mdinaradze
+  role: party chair
+  aliases: [მამუკა მდინარაძე]
+
+- id: papuashvili
+  ka: პაპუაშვილი
+  en: Papuashvili
+  role: parliament speaker
+  aliases: [შალვა პაპუაშვილი]
+
+- id: garibashvili
+  ka: ღარიბაშვილი
+  en: Garibashvili
+  role: party leader
+  aliases: [ირაკლი ღარიბაშვილი]
+
+- id: okhanashvili
+  ka: ოხანაშვილი
+  en: Okhanashvili
+  role: MP
+  aliases: [ანრი ოხანაშვილი]
+
+- id: bochorishvili
+  ka: ბოჭორიშვილი
+  en: Bochorishvili
+  role: MP
+  aliases: [მაკა ბოჭორიშვილი]
+
+- id: ugulava
+  ka: უგულავა
+  en: Ugulava
+  role: opposition figure
+  aliases: [გიგი უგულავა]
+
+- id: burjanadze
+  ka: ბურჯანაძე
+  en: Burjanadze
+  role: opposition figure
+  aliases: [ნინო ბურჯანაძე]
+
+- id: margvelashvili
+  ka: მარგველაშვილი
+  en: Margvelashvili
+  role: ex-president
+  aliases: [გიორგი მარგველაშვილი]
+
+- id: makhashvili
+  ka: მახაშვილი
+  en: Makashvili
+  role: analyst
+  aliases: [ლევან მახაშვილი]

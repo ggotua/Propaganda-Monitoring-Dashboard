@@ -151,12 +151,18 @@ def test_collect_wires_end_to_end(tmp_path: Path, monkeypatch, capsys) -> None:
     code = main(
         [
             "collect",
-            "--db", str(db_path),
-            "--config-dir", "config",
-            "--raw-dir", str(tmp_path / "raw"),
-            "--log-dir", str(log_dir),
-            "--channel", "imedi",
-            "--limit", "5",
+            "--db",
+            str(db_path),
+            "--config-dir",
+            "config",
+            "--raw-dir",
+            str(tmp_path / "raw"),
+            "--log-dir",
+            str(log_dir),
+            "--channel",
+            "imedi",
+            "--limit",
+            "5",
         ]
     )
     out = capsys.readouterr().out
@@ -183,11 +189,16 @@ def test_collect_reports_block_with_exit_five(tmp_path: Path, monkeypatch, capsy
     code = main(
         [
             "collect",
-            "--db", str(db_path),
-            "--config-dir", "config",
-            "--raw-dir", str(tmp_path / "raw"),
-            "--log-dir", str(log_dir),
-            "--channel", "imedi",
+            "--db",
+            str(db_path),
+            "--config-dir",
+            "config",
+            "--raw-dir",
+            str(tmp_path / "raw"),
+            "--log-dir",
+            str(log_dir),
+            "--channel",
+            "imedi",
         ]
     )
     assert code == 5

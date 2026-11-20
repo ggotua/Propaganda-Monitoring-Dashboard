@@ -30,8 +30,9 @@ LOGGER = logging.getLogger("test.collect")
 
 def _channel(channel_id: str = "imedi", handle: str = "@tvimedi") -> Channel:
     """Build a channel fixture."""
-    return Channel(channel_id=channel_id, name_en=channel_id.title(), name_ka=None,
-                   youtube_handle=handle)
+    return Channel(
+        channel_id=channel_id, name_en=channel_id.title(), name_ka=None, youtube_handle=handle
+    )
 
 
 def _news_programme(channel_id: str = "imedi") -> Programme:

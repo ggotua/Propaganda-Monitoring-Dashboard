@@ -110,9 +110,7 @@ def _coverage_bar(rows: tuple[tuple[str, int, int], ...]) -> go.Figure:
 
     figure = go.Figure()
     figure.add_bar(name="clustered", x=channels, y=clustered, marker_color=CLUSTER_COLOUR)
-    figure.add_bar(
-        name="unclassified", x=channels, y=unclassified, marker_color=OUTLIER_COLOUR
-    )
+    figure.add_bar(name="unclassified", x=channels, y=unclassified, marker_color=OUTLIER_COLOUR)
     figure.update_layout(
         barmode="stack",
         yaxis_title="segments",
@@ -143,22 +141,20 @@ def main() -> None:
             st.header("Slice")
             names = ["All channels"] + [option.name_en for option in channels]
             chosen = st.selectbox("Channel", names)
-            selected_channel = None if chosen == "All channels" else next(
-                option.channel_id for option in channels if option.name_en == chosen
+            selected_channel = (
+                None
+                if chosen == "All channels"
+                else next(option.channel_id for option in channels if option.name_en == chosen)
             )
             since_default = overview.first_date or date(2026, 10, 1)
             until_default = overview.last_date or date(2026, 11, 30)
-            span = st.date_input(
-                "Broadcast date range", value=(since_default, until_default)
-            )
+            span = st.date_input("Broadcast date range", value=(since_default, until_default))
             since: date | None = None
             until: date | None = None
             if isinstance(span, tuple) and len(span) == 2:
                 since, until = span
 
-        shares = queries.topic_shares(
-            conn, channel_id=selected_channel, since=since, until=until
-        )
+        shares = queries.topic_shares(conn, channel_id=selected_channel, since=since, until=until)
 
         outlier = next((s for s in shares if s.topic_id == OUTLIER_TOPIC_ID), None)
         outlier_rate = outlier.share if outlier else 0.0

@@ -201,9 +201,7 @@ def test_backoff_after_one_block(initialized_db: Path) -> None:
 
     conn = connect(initialized_db, read_only=True)
     try:
-        decision = next_batch(
-            conn, CONFIGURED, today=TODAY, now=datetime(2026, 11, 14, 10, 0)
-        )
+        decision = next_batch(conn, CONFIGURED, today=TODAY, now=datetime(2026, 11, 14, 10, 0))
     finally:
         conn.close()
 
@@ -229,9 +227,7 @@ def test_backoff_doubles_and_caps(initialized_db: Path) -> None:
 
     conn = connect(initialized_db, read_only=True)
     try:
-        decision = next_batch(
-            conn, CONFIGURED, today=TODAY, now=datetime(2026, 11, 14, 4, 0)
-        )
+        decision = next_batch(conn, CONFIGURED, today=TODAY, now=datetime(2026, 11, 14, 4, 0))
         last_block, consecutive = block_history(conn)
     finally:
         conn.close()
@@ -266,9 +262,7 @@ def test_success_resets_the_backoff(initialized_db: Path) -> None:
     conn = connect(initialized_db, read_only=True)
     try:
         _, consecutive = block_history(conn)
-        decision = next_batch(
-            conn, CONFIGURED, today=TODAY, now=datetime(2026, 11, 14, 10, 0)
-        )
+        decision = next_batch(conn, CONFIGURED, today=TODAY, now=datetime(2026, 11, 14, 10, 0))
     finally:
         conn.close()
 

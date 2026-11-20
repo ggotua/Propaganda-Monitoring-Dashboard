@@ -115,9 +115,7 @@ def test_too_few_segments_is_refused() -> None:
 def test_outliers_are_stored_not_dropped() -> None:
     """FR-2: an unplaceable segment is a fact, and dropping it would inflate every other share."""
     repo = FakeRepo()
-    result = run_topics(
-        FakeReader(250), FakeEngine({"seg0": 0, "seg1": 0}), repo, min_segments=200
-    )
+    result = run_topics(FakeReader(250), FakeEngine({"seg0": 0, "seg1": 0}), repo, min_segments=200)
 
     assert len(repo.assignments) == 250
     assert sum(1 for a in repo.assignments if a.topic_id == OUTLIER_TOPIC_ID) == 248

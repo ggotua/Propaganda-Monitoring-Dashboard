@@ -48,14 +48,10 @@ def neighbour_similarities(
     """
     if len(vectors) != len(sentences):
         raise ValueError("vectors must be aligned with sentences")
-    return tuple(
-        cosine(vectors[index], vectors[index + 1]) for index in range(len(vectors) - 1)
-    )
+    return tuple(cosine(vectors[index], vectors[index + 1]) for index in range(len(vectors) - 1))
 
 
-def drift_threshold(
-    similarities: Sequence[float], *, quantile: float = DRIFT_QUANTILE
-) -> float:
+def drift_threshold(similarities: Sequence[float], *, quantile: float = DRIFT_QUANTILE) -> float:
     """Return the similarity below which a boundary is placed.
 
     Args:
@@ -105,7 +101,5 @@ def segment_video_drift(
     similarities = neighbour_similarities(sentences, vectors)
     threshold = drift_threshold(similarities, quantile=quantile)
 
-    drafts = segment_by_drift(
-        sentences, similarities, video_id, threshold=threshold
-    )
+    drafts = segment_by_drift(sentences, similarities, video_id, threshold=threshold)
     return writer.replace_segments(video_id, drafts, SEG_METHOD_DRIFT, ACTIVE_SEG_VERSION)

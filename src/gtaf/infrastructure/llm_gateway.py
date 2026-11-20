@@ -109,9 +109,7 @@ class Gateway:
         self._config = config
         self._chains = chains
 
-    def ask(
-        self, prompt: str, *, prompt_version: str, provider: str
-    ) -> LLMResponse:
+    def ask(self, prompt: str, *, prompt_version: str, provider: str) -> LLMResponse:
         """Answer a prompt, using the cache and the provider's fallback chain.
 
         Args:
@@ -197,9 +195,7 @@ class Gateway:
                 written.
         """
         spent = self._store.spent_between(month_start())
-        worst_case = estimate_cost(
-            spec, estimate_tokens(prompt), MAX_OUTPUT_TOKENS
-        )
+        worst_case = estimate_cost(spec, estimate_tokens(prompt), MAX_OUTPUT_TOKENS)
         if spent + worst_case > self._config.monthly_budget_usd:
             raise BudgetExceededError(
                 f"refusing call: spent {spent:.4f} + estimated {worst_case:.4f} USD would exceed "
@@ -251,6 +247,9 @@ def fake_completion(text: str, input_tokens: int = 10, output_tokens: int = 5) -
     """
     return Completion(
         text=text,
-        usage=Usage(input_tokens=input_tokens, output_tokens=output_tokens,
-                    total_tokens=input_tokens + output_tokens),
+        usage=Usage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+        ),
     )

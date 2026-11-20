@@ -1015,3 +1015,44 @@ reportable content. That is the reason the next measurement is stratified rather
 the stratified entity-level rate exceeds ~30 % in hearings or street audio, which would make the
 dictionary mandatory *and* force every named claim to state its audio condition.
 
+---
+
+## D-029: Dictionary-first actor matching, calibrated by audit — and E501 is off
+
+Status: Accepted (2026-11-20). Two decisions recorded together because they were made in the same hour
+and both are about where effort belongs.
+
+### Part 1 — actors are matched by dictionary, not by a model
+
+Context: D-028 unblocked entity work but showed the failures concentrate in names. A general NER model for
+Georgian would either not exist or produce output nobody can audit; a dictionary plus explicit rules
+produces failures that are visible and countable.
+
+Decision: match a 15-entry dictionary of public figures with 21 Georgian case endings, plus fuzzy matching
+constrained by both **length** and **edit distance**. Every threshold was set by auditing real matches
+(SPEC-011 §5): 62 → 0 → 6 → 4 fuzzy matches across four iterations, with the false positives named
+(`გააცრია` "sifted", `მდინარე` "river", `მედია` "media", `გიხარია` "I'm glad").
+
+Rejected: a ratio-only threshold (iteration 2 collapsed recall, iteration 1 leaked common nouns — the same
+ratio scores both, which is why length and edit distance are needed); a general NER model (unauditable);
+fuzzy matching below 7 characters (`მელია` matched four ordinary words).
+
+Consequences: counts are **lower bounds** — an actor outside the dictionary is invisible, not invented.
+That is the right failure direction for an analytical claim.
+
+### Part 2 — E501 is disabled; `ruff format` owns line width
+
+Context: holding `E501` at 100 columns meant that every docstring sentence longer than the column cost a
+round trip to re-wrap, and re-wrapping prose to fit a column makes it read worse, not better. Across
+SPEC-006 and SPEC-011 this consumed dozens of edits that changed nothing a reader cares about.
+
+Decision: `E501` leaves the select list; `ruff format` (line-length 100) keeps **code** consistent
+mechanically. The per-file `E501` exceptions for the Streamlit page, the report renderer and the spikes
+are therefore removed — they existed only to work around this.
+
+Rejected: keeping E501 and accepting the churn (it crowded out real review); raising the column to 120
+just moves the arbitrary line; disabling the formatter instead would trade one mechanical rule for none.
+
+Consequences: prose may exceed 100 columns; code does not. Revisit if a second contributor wants a hard
+column rule for reviews.
+

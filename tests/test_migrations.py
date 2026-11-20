@@ -29,9 +29,7 @@ def test_fresh_database_reaches_supported_version(db_file: Path) -> None:
         result = migrate_database(conn, migrations)
         tables = {
             str(row[0])
-            for row in conn.execute(
-                "SELECT table_name FROM information_schema.tables"
-            ).fetchall()
+            for row in conn.execute("SELECT table_name FROM information_schema.tables").fetchall()
         }
     finally:
         conn.close()
@@ -71,9 +69,7 @@ def test_v1_database_migrates_forward(db_file: Path) -> None:
         result = migrate_database(conn, migrations)
         tables = {
             str(row[0])
-            for row in conn.execute(
-                "SELECT table_name FROM information_schema.tables"
-            ).fetchall()
+            for row in conn.execute("SELECT table_name FROM information_schema.tables").fetchall()
         }
     finally:
         conn.close()

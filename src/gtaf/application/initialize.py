@@ -218,6 +218,4 @@ def migrate_database(conn: SqlConnection, migrations: Sequence[Migration]) -> Mi
     version = read_schema_version(conn)
     if version != expected:
         raise SchemaVersionError(version, expected)
-    return MigrateResult(
-        from_version=current, to_version=version, applied=tuple(applied)
-    )
+    return MigrateResult(from_version=current, to_version=version, applied=tuple(applied))

@@ -199,9 +199,7 @@ class YtDlpSource:
             title=str(info.get("title") or ""),
             published_at=_timestamp_to_utc(info.get("timestamp") or info.get("release_timestamp")),
             duration_s=int(info["duration"]) if info.get("duration") else None,
-            manual_langs=tuple(
-                key for key in manual if key not in NON_TRANSCRIPT_LANGS
-            ),
+            manual_langs=tuple(key for key in manual if key not in NON_TRANSCRIPT_LANGS),
             auto_langs=tuple(key for key in auto if key not in NON_TRANSCRIPT_LANGS),
         )
 

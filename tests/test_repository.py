@@ -107,9 +107,7 @@ def test_channel_and_programme_upsert(initialized_db: Path) -> None:
         repo.upsert_programme(programme)
         repo.upsert_programme(programme)
 
-        rows = conn.execute(
-            "SELECT programme_id, type, title_patterns FROM programmes"
-        ).fetchall()
+        rows = conn.execute("SELECT programme_id, type, title_patterns FROM programmes").fetchall()
     finally:
         conn.close()
     assert len(rows) == 1
@@ -218,8 +216,9 @@ def test_run_lifecycle(initialized_db: Path) -> None:
     try:
         repo = DuckDBRepository(conn)
         run_id = repo.start_run("collect", '{"limit": 5}')
-        running = conn.execute("SELECT status, finished_at FROM runs WHERE run_id = ?",
-                               [run_id]).fetchone()
+        running = conn.execute(
+            "SELECT status, finished_at FROM runs WHERE run_id = ?", [run_id]
+        ).fetchone()
         repo.finish_run(run_id, status="ok", n_items=7, watermark="2026-11-01", error=None)
         finished = conn.execute(
             "SELECT status, n_items, watermark, finished_at FROM runs WHERE run_id = ?", [run_id]

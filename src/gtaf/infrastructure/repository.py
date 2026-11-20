@@ -265,10 +265,7 @@ class DuckDBRepository:
                 self._conn.executemany(
                     "INSERT INTO captions (video_id, idx, start_s, end_s, text) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    [
-                        (video.video_id, cue.idx, cue.start_s, cue.end_s, cue.text)
-                        for cue in cues
-                    ],
+                    [(video.video_id, cue.idx, cue.start_s, cue.end_s, cue.text) for cue in cues],
                 )
             self._conn.execute("COMMIT")
         except Exception:
@@ -284,9 +281,7 @@ class DuckDBRepository:
         Returns:
             True when the row exists.
         """
-        row = self._conn.execute(
-            "SELECT 1 FROM videos WHERE video_id = ?", [video_id]
-        ).fetchone()
+        row = self._conn.execute("SELECT 1 FROM videos WHERE video_id = ?", [video_id]).fetchone()
         return row is not None
 
     def fetch_cues(self, video_id: str) -> tuple[CaptionCue, ...]:
@@ -463,9 +458,7 @@ class DuckDBRepository:
         ).fetchone()
         return str(row[0]) if row else None
 
-    def list_topics(
-        self, run_id: str
-    ) -> tuple[tuple[int, str | None, tuple[str, ...], int], ...]:
+    def list_topics(self, run_id: str) -> tuple[tuple[int, str | None, tuple[str, ...], int], ...]:
         """Return topics of one run.
 
         Args:

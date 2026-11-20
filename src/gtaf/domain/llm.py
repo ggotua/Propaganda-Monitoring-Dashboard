@@ -76,9 +76,7 @@ GEMINI_CHAIN: tuple[ModelSpec, ...] = (
 )
 
 # DeepSeek's published per-million rates at the date above; paid, so used on samples, not on bulk.
-DEEPSEEK_CHAIN: tuple[ModelSpec, ...] = (
-    ModelSpec("deepseek-chat", VENDOR_DEEPSEEK, 0.27, 1.10),
-)
+DEEPSEEK_CHAIN: tuple[ModelSpec, ...] = (ModelSpec("deepseek-chat", VENDOR_DEEPSEEK, 0.27, 1.10),)
 
 PROVIDER_CHAINS: dict[str, tuple[ModelSpec, ...]] = {
     "gemini": GEMINI_CHAIN,
