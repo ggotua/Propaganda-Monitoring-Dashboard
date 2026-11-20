@@ -32,6 +32,7 @@ whose keys are now present in `.env`.
 | Videos stored | **263** — Imedi only, unchanged for two days |
 | Date coverage | 2026-11-03 … 2026-11-13 — **11 of the 43 days in the window** |
 | Segments / topics | **4,837 drift segments** (control: 2,355 fixed), 62 topics, **38.2 % unclassified** |
+| Schema | **v4** — `stance` table added (SPEC-013) |
 | Caption kind | 263 auto, **0 manual** |
 | Skipped (age-gated) | 26 ≈ 9.7 % of in-window attempts — recoverable only with cookies |
 | Scheduled task | Registered, `Ready`, ran 14 Nov 03:01 with result 0 |
@@ -109,6 +110,7 @@ were taken during implementation.
 | SPEC-010 | **Approved and implemented** — paced `next` decision, `runs` history, Task Scheduler script; picks Formula next (0 videos) |
 | SPEC-011 | **Approved and implemented** — dictionary + ending + calibrated fuzzy matching; 330 of 4,837 segments mention a known actor (6.8 %); **G-5 passed at 0.96** (48/50), so named *mentions* may be published — never speech, airtime or sentiment |
 | SPEC-012 | **Approved and implemented** — co-occurrence network; **unit = broadcast** (D-030: segment level gives 0.43 % of units, video level 17.9 %); top pair Kobakhidze–Papuashvili in 17 of 262 broadcasts |
+| SPEC-013 | **Approved and implemented, gate OPEN** — stance labelling via the gateway (schema v4); first pass on 30 segments: 60 % critical / 13.3 % neutral / 26.7 % unclear, $0.011. **Not publishable until G-8** |
 | Analytical policy | **In force** (D-023) — seven numeric publication gates in [`ANALYTICAL-POLICY.md`](ANALYTICAL-POLICY.md); no substantive claim passes them yet |
 | Trunk & release | **`main` created, tagged `v0.1.0`** (D-022); future work on per-SPEC branches merged to `main` |
 | D-007 interpreter chain | **CLOSED 2026-11-13** — full chain imports on Python 3.13.1 (D-019). No fallback to 3.12 |

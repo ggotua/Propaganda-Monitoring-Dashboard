@@ -21,6 +21,7 @@ someone likes becomes the finding.
 | G-5 | Name an **actor** or attribute a statement | NER agreement ≥ **0.80** on a 50-mention spot-check **and** caption WER ≤ **30 %** | ASR mangles exactly the proper nouns an entity claim depends on (`ASR-QUALITY.md`) |
 | G-6 | Publish **any** number | denominator + outlier rate + date span + channel count + method version travel with it | A number without its scope is not reproducible and invites the wrong comparison |
 | G-7 | Publish **proportions** | never renormalised to 100 % unless the excluded share is stated in the same sentence | 61 % of segments are placed; a "61 %-normalised" chart silently hides the rest |
+| G-8 | Publish any **model-judged label** (stance, framing) | human agreement ≥ **0.80** on ≥ 50 labelled items, including the model's `critical` and `unclear` verdicts | a judgement can be systematically biased in a way a count cannot; plausibility is not agreement |
 
 ## 1a. Gate status as measured (2026-11-20)
 
@@ -28,6 +29,7 @@ someone likes becomes the finding.
 |---|---|---|
 | G-5, WER half | **PASSES** | 12.3 % WER / 4.3 % CER, 373 words, and that is an *upper bound* because the reference was an edited article (D-028) |
 | G-5, entity half | **PASSES** (0.96, n=50) | 48/50 correct; Wilson 95 % CI ≈ 0.87–0.99, above the 0.80 bar. Two false positives (same pair of distinct people) fixed afterwards — see `G5-VALIDATION.md` |
+| G-8, stance/framing labels | **OPEN** | first pass exists (30 segments, 26.7 % `unclear`) but no human agreement measured; nothing may be published until it is |
 | G-1, G-2 | fail on current data | 38.2 % unclassified; largest topic 5.5 % of 4,837 segments |
 | G-3, G-4 | fail on current data | one channel, 11 days; no trend possible |
 

@@ -48,9 +48,11 @@ from gtaf.application.schedule import (
 )
 from gtaf.application.segment import segment_video
 from gtaf.application.segment_drift import segment_video_drift
+from gtaf.application.stance import label_stance
 from gtaf.application.text import sentences_for_video
 from gtaf.application.topic_labels import label_topics
 from gtaf.application.topics import InsufficientDataError, run_topics
+from gtaf.domain.actors import Actor
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 from gtaf.domain.llm import (
     PRICES_CHECKED_ON,
@@ -250,6 +252,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default="video",
         help="what an edge counts; video is the default because segments are too sparse (D-030)",
     )
+
+    stance = sub.add_parser("stance", help="label stance toward an actor (SPEC-013)")
+    stance.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    stance.add_argument("--config", type=Path, default=Path("config/actors.yaml"))
+    stance.add_argument("--env-file", type=Path, default=Path(".env"))
+    stance.add_argument("--target", required=True, help="actor id, English or Georgian name")
+    stance.add_argument("--limit", type=int, default=40, help="segments to label; 0 for all")
+    stance.add_argument("--provider", default="deepseek")
+    stance.add_argument("--budget", type=float, default=None, help="monthly cap in USD")
 
     return parser
 
@@ -1132,6 +1143,98 @@ def _cmd_network(
     return EXIT_OK
 
 
+def _find_actor(actors: Sequence[Actor], needle: str) -> Actor:
+    """Resolve an actor from an id, English name or Georgian name.
+
+    Args:
+        actors: Dictionary.
+        needle: What the user typed.
+
+    Returns:
+        The matching actor.
+
+    Raises:
+        KeyError: When nothing matches, with the available ids listed so the failure is actionable.
+    """
+    wanted = needle.strip().lower()
+    for actor in actors:
+        if wanted in {actor.actor_id.lower(), actor.en.lower(), actor.ka.lower()}:
+            return actor
+    raise KeyError(
+        f"unknown actor {needle!r}; known ids: {', '.join(actor.actor_id for actor in actors)}"
+    )
+
+
+def _cmd_stance(
+    *,
+    db_path: Path,
+    config_path: Path,
+    env_file: Path,
+    target: str,
+    limit: int,
+    provider: str,
+    budget: float | None,
+) -> int:
+    """Label stance toward one actor and report the counts (SPEC-013).
+
+    Args:
+        db_path: Database file, read-write (labels are stored).
+        config_path: Actor dictionary.
+        env_file: Path to `.env`.
+        target: Actor id, English or Georgian name.
+        limit: Segments to label; 0 for all.
+        provider: Provider key.
+        budget: Monthly cap in USD, or None.
+
+    Returns:
+        Process exit code.
+    """
+    actors = load_actor_config(config_path)
+    try:
+        actor = _find_actor(actors, target)
+    except KeyError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_CONFIG
+
+    conn = connect(db_path, read_only=False)
+    try:
+        repo = DuckDBRepository(conn)
+        gateway = _gateway(conn, env_file, budget)
+        result = label_stance(
+            gateway,
+            repo,
+            repo,
+            actor=actor,
+            provider=provider,
+            limit=limit,
+            method=ACTIVE_SEG_METHOD,
+        )
+    finally:
+        conn.close()
+
+    total = sum(result.counts.values())
+    print(
+        f"target: {actor.en} ({actor.ka}) | segments mentioning them: {result.asked} | "
+        f"labelled: {result.labelled} | unparsable: {result.unparsable} | "
+        f"cost: ${result.cost_usd:.6f}"
+    )
+    if total:
+        print()
+        for label, count in result.counts.items():
+            print(f"  {label:11} {count:>5}  {count / total:>6.1%}")
+        print(
+            f"\n  denominator is the {total} labelled segment(s) — not the channel's output. "
+            "`unclear` is a real answer, not a failure; a high `unclear` share means the text rarely "
+            "evaluates the person."
+        )
+    print(
+        "\nNOT PUBLISHABLE: stance labels are a model's reading of ASR text. Before any of these numbers "
+        "reaches a report, a human must check a sample and agreement must clear the bar in "
+        "ANALYTICAL-POLICY.md (G-8 is currently open)."
+    )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -1199,6 +1302,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "stance":
+            return _cmd_stance(
+                db_path=args.db,
+                config_path=args.config,
+                env_file=args.env_file,
+                target=args.target,
+                limit=args.limit,
+                provider=args.provider,
+                budget=args.budget,
+            )
         if args.command == "network":
             return _cmd_network(
                 db_path=args.db,

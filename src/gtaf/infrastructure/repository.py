@@ -446,6 +446,69 @@ class DuckDBRepository:
         ).fetchone()
         return float(row[0]) if row else 0.0
 
+    def store_stance(
+        self,
+        rows: Sequence[tuple[str, str, str, float, str, str, str | None]],
+        *,
+        run_id: str | None,
+    ) -> int:
+        """Write stance labels, replacing a previous label for the same key.
+
+        Args:
+            rows: ``(segment_id, target, label, confidence, model, rationale, prompt_version)``.
+            run_id: Optional run to attribute the labels to.
+
+        Returns:
+            Number of rows written.
+        """
+        if not rows:
+            return 0
+        moment = _utc_now()
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            for segment_id, target, label, confidence, model, rationale, prompt_version in rows:
+                self._conn.execute(
+                    "DELETE FROM stance WHERE segment_id = ? AND target = ? AND model = ? "
+                    "AND prompt_version = ?",
+                    [segment_id, target, model, prompt_version],
+                )
+                self._conn.execute(
+                    "INSERT INTO stance (segment_id, target, label, confidence, model, "
+                    "prompt_version, run_id, rationale, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        segment_id,
+                        target,
+                        label,
+                        confidence,
+                        model,
+                        prompt_version,
+                        run_id,
+                        rationale,
+                        moment,
+                    ],
+                )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+        return len(rows)
+
+    def stance_counts(self, target: str) -> tuple[tuple[str, int], ...]:
+        """Return label counts for a target.
+
+        Args:
+            target: Actor id.
+
+        Returns:
+            ``(label, count)`` rows ordered by label, so a caller can tell a zero from a missing row by
+            looking at the full label set it prints itself.
+        """
+        rows = self._conn.execute(
+            "SELECT label, count(*) FROM stance WHERE target = ? GROUP BY 1 ORDER BY 1", [target]
+        ).fetchall()
+        return tuple((str(row[0]), _as_int(row[1])) for row in rows)
+
     def latest_topics_run(self) -> str | None:
         """Return the newest run that produced topics.
 
