@@ -65,6 +65,7 @@ from gtaf.domain.llm import (
 from gtaf.domain.models import Programme
 from gtaf.domain.networks import top_by_jaccard
 from gtaf.domain.segment import MAX_S, MIN_S, TARGET_S
+from gtaf.domain.stance import PROMPT_VERSION
 from gtaf.infrastructure.config_io import load_configuration
 from gtaf.infrastructure.db import (
     DatabaseLockedError,
@@ -266,6 +267,9 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="write N labelled segments for the G-8 human check instead of labelling",
+    )
+    stance.add_argument(
+        "--seed", type=int, default=42, help="sample seed; change it to draw a fresh review"
     )
     stance.add_argument(
         "--out",
@@ -1188,6 +1192,7 @@ def _cmd_stance(
     budget: float | None,
     export_sample: int = 0,
     out_path: Path | None = None,
+    seed: int = 42,
 ) -> int:
     """Label stance toward one actor, or export a G-8 review sample.
 
@@ -1215,22 +1220,24 @@ def _cmd_stance(
     if export_sample:
         conn = open_database(db_path, read_only=True)
         try:
-            rows = DuckDBRepository(conn).stance_rows(actor.actor_id)
+            rows = DuckDBRepository(conn).stance_rows(
+                actor.actor_id, prompt_version=PROMPT_VERSION
+            )
         finally:
             conn.close()
         if not rows:
             print(
-                f"no stored labels for {actor.actor_id}; run `gtaf stance --target "
-                f"{actor.actor_id}` first",
+                f"no stored labels for {actor.actor_id} under {PROMPT_VERSION}; run `gtaf stance "
+                f"--target {actor.actor_id}` first",
                 file=sys.stderr,
             )
             return EXIT_CONFIG
-        sample = review_sample(rows, actor=actor, size=export_sample)
+        sample = review_sample(rows, actor=actor, size=export_sample, seed=seed)
         counts: dict[str, int] = {}
         for row in sample:
             counts[row.label] = counts.get(row.label, 0) + 1
         lines = [
-            f"# G-8 review — stance toward {actor.en}",
+            f"# G-8 review — stance toward {actor.en} ({PROMPT_VERSION})",
             "",
             f"{len(sample)} labelled segments, stratified by the model's verdict "
             f"({', '.join(f'{label}: {count}' for label, count in sorted(counts.items()))}).",
@@ -1373,6 +1380,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 budget=args.budget,
                 export_sample=args.export_sample,
                 out_path=args.out,
+                seed=args.seed,
             )
         if args.command == "network":
             return _cmd_network(

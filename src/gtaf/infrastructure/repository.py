@@ -522,21 +522,33 @@ class DuckDBRepository:
         ).fetchall()
         return tuple((str(row[0]), _as_int(row[1])) for row in rows)
 
-    def stance_rows(self, target: str) -> tuple[tuple[str, str, float, str, str], ...]:
+    def stance_rows(
+        self, target: str, *, prompt_version: str | None = None
+    ) -> tuple[tuple[str, str, float, str, str], ...]:
         """Return stored stance labels for a target with their segment text.
 
         Args:
             target: Actor id.
+            prompt_version: Restrict to one prompt version; None mixes versions, which is only safe for
+                diagnostics — a review must never compare labels produced by different prompts.
 
         Returns:
             ``(segment_id, label, confidence, rationale, segment_text)`` ordered by segment id.
         """
-        rows = self._conn.execute(
-            "SELECT s.segment_id, s.label, s.confidence, coalesce(s.rationale, ''), g.text "
-            "FROM stance s JOIN segments g ON g.segment_id = s.segment_id "
-            "WHERE s.target = ? ORDER BY s.segment_id",
-            [target],
-        ).fetchall()
+        if prompt_version is None:
+            rows = self._conn.execute(
+                "SELECT s.segment_id, s.label, s.confidence, coalesce(s.rationale, ''), g.text "
+                "FROM stance s JOIN segments g ON g.segment_id = s.segment_id "
+                "WHERE s.target = ? ORDER BY s.segment_id",
+                [target],
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT s.segment_id, s.label, s.confidence, coalesce(s.rationale, ''), g.text "
+                "FROM stance s JOIN segments g ON g.segment_id = s.segment_id "
+                "WHERE s.target = ? AND s.prompt_version = ? ORDER BY s.segment_id",
+                [target, prompt_version],
+            ).fetchall()
         return tuple(
             (
                 str(row[0]),

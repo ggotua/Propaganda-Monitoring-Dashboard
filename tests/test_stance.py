@@ -219,8 +219,74 @@ def test_prompt_v2_states_the_target_rule_and_quote_duty() -> None:
     assert "quote" in prompt
 
 
-def test_review_sample_covers_every_label_class() -> None:
+def test_stance_rows_can_be_filtered_by_prompt_version(initialized_db) -> None:
+    """A review must never mix labels produced by different prompts."""
+    from pathlib import Path
+
+    from gtaf.infrastructure.db import connect
+    from gtaf.infrastructure.repository import DuckDBRepository
+
+    conn = connect(Path(initialized_db))
+    try:
+        repo = DuckDBRepository(conn)
+        repo.upsert_channel(
+            __import__("gtaf.domain.models", fromlist=["Channel"]).Channel(
+                channel_id="c1", name_en="C1", name_ka=None, youtube_handle="@c1"
+            )
+        )
+        repo.upsert_video(
+            __import__("gtaf.domain.models", fromlist=["Video"]).Video(
+                video_id="v1",
+                channel_id="c1",
+                programme_id=None,
+                published_at=__import__("datetime").datetime(2026, 11, 1, 19, 0),
+                broadcast_date_local=__import__("datetime").date(2026, 11, 1),
+                title="t",
+                duration_s=600,
+                caption_kind="auto",
+                caption_lang="ka",
+                status="captioned",
+            ),
+            (),
+        )
+        conn.execute(
+            "INSERT INTO segments (segment_id, video_id, start_s, end_s, text, title_ka, "
+            "title_en, seg_method, seg_version) VALUES "
+            "('s1','v1',0,10,'სააკაშვილი','','','drift','1')"
+        )
+        repo.store_stance(
+            [("s1", "saakashvili", "critical", 0.9, "m", "r1", "stance-v1", "q1", True)],
+            run_id=None,
+        )
+        repo.store_stance(
+            [("s1", "saakashvili", "unclear", 0.8, "m", "r2", "stance-v2", "q2", True)],
+            run_id=None,
+        )
+        v1 = repo.stance_rows("saakashvili", prompt_version="stance-v1")
+        v2 = repo.stance_rows("saakashvili", prompt_version="stance-v2")
+        both = repo.stance_rows("saakashvili")
+    finally:
+        conn.close()
+
+    assert [row[1] for row in v1] == ["critical"]
+    assert [row[1] for row in v2] == ["unclear"]
+    assert len(both) == 2
     """G-8 needs the model's hard verdicts, not a draw that is 90 % `critical`."""
+    from gtaf.application.stance import review_sample
+
+    rows = (
+        [("s1", "critical", 0.9, "r", "ტექსტი")] * 40
+        + [("s2", "unclear", 0.5, "r", "ტექსტი")] * 5
+        + [("s3", "neutral", 0.6, "r", "ტექსტი")] * 5
+    )
+    sample = review_sample(rows, actor=TARGET, size=12, seed=3)
+
+    assert {row.label for row in sample} == {"critical", "unclear", "neutral"}
+    assert len(sample) == 12
+
+
+def test_review_sample_covers_every_label_class() -> None:
+    """G-8 needs the model's hard verdicts, not a draw that is mostly `critical`."""
     from gtaf.application.stance import review_sample
 
     rows = (
