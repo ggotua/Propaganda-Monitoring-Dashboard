@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from gtaf.application.stance import label_stance
+from gtaf.application.stance import label_stance, review_sample
 from gtaf.domain.actors import Actor
 from gtaf.domain.stance import LABELS, build_prompt, parse_stance, summarise
 
@@ -271,40 +271,60 @@ def test_stance_rows_can_be_filtered_by_prompt_version(initialized_db) -> None:
     assert [row[1] for row in v1] == ["critical"]
     assert [row[1] for row in v2] == ["unclear"]
     assert len(both) == 2
-    """G-8 needs the model's hard verdicts, not a draw that is 90 % `critical`."""
-    from gtaf.application.stance import review_sample
-
-    rows = (
-        [("s1", "critical", 0.9, "r", "ტექსტი")] * 40
-        + [("s2", "unclear", 0.5, "r", "ტექსტი")] * 5
-        + [("s3", "neutral", 0.6, "r", "ტექსტი")] * 5
-    )
-    sample = review_sample(rows, actor=TARGET, size=12, seed=3)
-
-    assert {row.label for row in sample} == {"critical", "unclear", "neutral"}
-    assert len(sample) == 12
-
 
 def test_review_sample_covers_every_label_class() -> None:
     """G-8 needs the model's hard verdicts, not a draw that is mostly `critical`."""
-    from gtaf.application.stance import review_sample
-
     rows = (
-        [("s1", "critical", 0.9, "r", "ტექსტი")] * 40
-        + [("s2", "unclear", 0.5, "r", "ტექსტი")] * 5
-        + [("s3", "neutral", 0.6, "r", "ტექსტი")] * 5
+        [(f"a{index}", "critical", 0.9, "r", f"ტექსტი {index}") for index in range(40)]
+        + [(f"b{index}", "unclear", 0.5, "r", f"სხვა {index}") for index in range(5)]
+        + [(f"c{index}", "neutral", 0.6, "r", f"მესამე {index}") for index in range(5)]
     )
     sample = review_sample(rows, actor=TARGET, size=12, seed=3)
 
     assert {row.label for row in sample} == {"critical", "unclear", "neutral"}
     assert len(sample) == 12
+
+
+def test_review_sample_dedupes_repeated_segment_text() -> None:
+    """The reviewer found near-identical rows: the sample was smaller than its stated denominator."""
+    same = "ერთი და იგივე ტექსტი საკმარისად გრძელი"
+    rows = [(f"s{index}", "critical", 0.9, "r", same) for index in range(10)]
+
+    sample = review_sample(rows, actor=TARGET, size=5, seed=1)
+
+    assert len(sample) == 1
+
+
+def test_review_sample_can_target_one_label() -> None:
+    """Rare classes need a deliberate draw: a stratified 50 may contain one `supportive`."""
+    rows = [
+        ("s1", "critical", 0.9, "r", "ტექსტი 1"),
+        ("s2", "unclear", 0.5, "r", "ტექსტი 2"),
+        ("s3", "supportive", 0.7, "r", "ტექსტი 3"),
+        ("s4", "neutral", 0.6, "r", "ტექსტი 4"),
+    ]
+
+    sample = review_sample(rows, actor=TARGET, size=10, seed=1, only_labels=("neutral", "supportive"))
+
+    assert {row.label for row in sample} == {"neutral", "supportive"}
+
+
+def test_review_sample_excludes_title_conflicted_rows() -> None:
+    """D-031: a segment calling an ex-president 'the president' must not reach a review."""
+    ex = Actor("saakashvili", "სააკაშვილი", "Saakashvili", "ex-president")
+    rows = [
+        ("s1", "neutral", 0.9, "r", "საქართველოს პრეზიდენტი მიხეილ სააკაშვილი სიტყვით გამოვა"),
+        ("s2", "neutral", 0.9, "r", "მიხეილ სააკაშვილი კომენტარს აკეთებს"),
+    ]
+
+    sample = review_sample(rows, actor=ex, size=10, seed=1)
+
+    assert [row.segment_id for row in sample] == ["s2"]
 
 
 def test_review_sample_is_deterministic() -> None:
     """A review must be reproducible: same seed, same rows."""
-    from gtaf.application.stance import review_sample
-
-    rows = [("s1", "critical", 0.9, "r", "ა")] * 10 + [("s2", "unclear", 0.5, "r", "ბ")] * 10
+    rows = [(f"s{index}", "critical", 0.9, "r", f"ტექსტი {index}") for index in range(10)]
     first = review_sample(rows, actor=TARGET, size=8, seed=11)
     second = review_sample(rows, actor=TARGET, size=8, seed=11)
 
@@ -316,12 +336,8 @@ def test_review_sample_is_deterministic() -> None:
 
 def test_review_row_shows_the_name_not_the_start_of_the_segment() -> None:
     """Found by opening the first generated file: the target sat past the truncation point."""
-    from gtaf.application.stance import review_sample
-
     long_text = "შესავალი " * 60 + "სააკაშვილი კრიტიკულად " + "დასასრული " * 60
-    sample = review_sample(
-        [("s1", "critical", 0.9, "r", long_text)], actor=TARGET, size=1
-    )
+    sample = review_sample([("s1", "critical", 0.9, "r", long_text)], actor=TARGET, size=1)
 
     assert "სააკაშვილი" in sample[0].text
     assert sample[0].text.startswith("…")

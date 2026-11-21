@@ -272,6 +272,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--seed", type=int, default=42, help="sample seed; change it to draw a fresh review"
     )
     stance.add_argument(
+        "--only-labels",
+        default="",
+        help="comma-separated labels for a targeted review, e.g. neutral,supportive",
+    )
+    stance.add_argument(
         "--out",
         type=Path,
         default=Path("reports/g8-stance-review.md"),
@@ -1196,6 +1201,7 @@ def _cmd_stance(
     export_sample: int = 0,
     out_path: Path | None = None,
     seed: int = 42,
+    only_labels: str = "",
 ) -> int:
     """Label stance toward one actor, or export a G-8 review sample.
 
@@ -1235,7 +1241,13 @@ def _cmd_stance(
                 file=sys.stderr,
             )
             return EXIT_CONFIG
-        sample = review_sample(rows, actor=actor, size=export_sample, seed=seed)
+        sample = review_sample(
+            rows,
+            actor=actor,
+            size=export_sample,
+            seed=seed,
+            only_labels=tuple(part.strip() for part in only_labels.split(",") if part.strip()),
+        )
         counts: dict[str, int] = {}
         for row in sample:
             counts[row.label] = counts.get(row.label, 0) + 1
@@ -1384,6 +1396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 export_sample=args.export_sample,
                 out_path=args.out,
                 seed=args.seed,
+                only_labels=args.only_labels,
             )
         if args.command == "network":
             return _cmd_network(

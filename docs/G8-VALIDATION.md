@@ -1,11 +1,15 @@
 # G-8 validation record — stance labelling
 
-Status: **FAILED** (2026-11-21). The gate required agreement ≥ 0.80 over 50 reviews; the review found
-**at least 19 rejected rows (≤ 0.62)** and, more importantly, **five distinct failure classes**, three of
-which no threshold could have fixed.
+Status: **CONDITIONAL PASS** (v2, 2026-11-21) — 42/50 = **0.84** overall, above the 0.80 bar, but two label
+classes are too small to judge and one is contaminated by the corpus defect fixed afterwards.
 
-Reviewer: George. Sample: 50 rows from `gtaf stance --target saakashvili --export-sample 50`
-(prompt `stance-v1`, DeepSeek).
+- **v1:** 33/50 = 0.66 → **FAILED** (five failure classes, §v1 below)
+- **v2:** 42/50 = 0.84 → **CONDITIONAL PASS** (§v2 below)
+- **Targeted check of `neutral` and `supportive`:** **not yet run** — files produced, see §"Still open"
+
+Reviewer: George. He applied the same standard to both versions, and reports that five calls were
+borderline: if every one had gone against the model, v2 would be 41/50 = 0.82 — the overall verdict holds
+either way.
 
 ## Result
 
@@ -18,7 +22,76 @@ Reviewer: George. Sample: 50 rows from `gtaf stance --target saakashvili --expor
 The exact count is uncertain because the rejections overlap; the upper bound is 31/50, which is already
 below the bar. No arithmetic could rescue it, and the classes matter more than the percentage.
 
-## The five failure classes
+## v2 result — 42/50 (0.84), conditional
+
+| Class | Agree | Rate | v1 rate |
+|---|---|---|---|
+| `critical` | 21 / 23 | **91 %** | 66 % |
+| `unclear` | 20 / 23 | **87 %** | — |
+| `neutral` | 1 / 3 | 33 % | — |
+| `supportive` | 0 / 1 | **0 %** | — |
+| **Overall** | **42 / 50** | **84 %** | 66 % |
+
+**What improved.** The explicit-target rule worked. The rows v1 wrongly called `critical` are now `unclear`,
+correctly: the Alasania and Zodelava rows, the UNM-as-a-party rows, the ambassadors' démarche, and the list
+of court cases. That list also receives one consistent label now.
+Key finding: **the model can be steered away from a systematic error by a stated rule**, which is the most
+encouraging result so far in this project.
+
+**Why it is only conditional.**
+
+1. **Two classes are too small to judge.** `neutral` has 3 rows, `supportive` 1. "No class clearly broken"
+   cannot be claimed for either, and the bar is by class as well as overall.
+2. **The only `supportive` label is wrong.** #12 is the UNM defending itself in the Constitutional Court,
+   saying his role as party chairman was "minimal" — the party disowning him, which the reporter frames as
+   such. The same content is `neutral` in #31. So `supportive` is **untested and currently 0 correct**.
+3. **The model now over-corrects toward `unclear`.** #2, #23 and #27 carry mild criticism — rejecting his
+   November 7 justification, "if it can even be called an idea", the "227 Strasbourg violations" framing.
+4. **Rationales still invent.** #11 claims the text calls him a "psychopath"; #25 and #48 quote words absent
+   from their segments. The labels on those rows are fine, but their stated evidence cannot be used.
+
+## Contamination found by the reviewer, and what it revealed
+
+#7, #29 and #38 are **Kavelashvili at COP31**, not Saakashvili. After applying the D-031 title/role guard
+and re-running, the class distribution changed materially:
+
+| | before guard | after guard and purge |
+|---|---|---|
+| `critical` | 46 | 46 |
+| `unclear` | 44 | 44 |
+| `neutral` | 7 | **0** |
+| `supportive` | 1 | **0** |
+
+**The `neutral` class was almost entirely contamination** — the COP31 segments were the neutral ones. Two
+consequences: the v2 `neutral` rate of 1/3 measured contaminated data, and Saakashvili currently has **no
+neutral and no supportive labels at all**, so those classes cannot be assessed on this target.
+
+## Targeted check, ready to run
+
+Because the rare classes cannot be judged on Saakashvili's own coverage, candidates were pulled from a
+second target. Kobakhidze (prime minister) under v2:
+
+```
+94 segments: supportive 24 (25.5%) | neutral 64 (68.1%) | critical 1 | unclear 5
+```
+
+Files for review:
+
+- `reports/g8-targeted-kobakhidze.md` — 30 rows, `neutral` 21 + `supportive` 9;
+- `reports/g8-targeted-saakashvili.md` — **0 rows**, which is itself the finding: after the purge this
+  target has no neutral or supportive labels to check.
+
+The 25.5 % supportive share for the prime minister is **suspicious in the opposite direction**: a
+government-aligned channel reporting the prime minister's own statements may read as "supportive" when it
+is simply attribution. That is what the targeted review is for.
+
+## Rules written down before the next round
+
+`docs/STANCE-RULES.md` records the decisions the reviewer asked for — reported speech (#41, #44), blame
+aimed at his government (#18, #19), a party disowning him (#12), and how to treat a quote that cannot be
+found. They apply to the next labelling round; the v2 measurement above stands under v2's prompt.
+
+## Still open (v1 section, kept for the record)
 
 ### 1. Hostile context read as a verdict on the target (the largest class)
 
