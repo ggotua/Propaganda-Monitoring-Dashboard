@@ -108,7 +108,7 @@ were taken during implementation.
 | SPEC-008 | **Approved and implemented** — Streamlit workbench renders the real corpus with the outlier rate on the page; 141 tests |
 | SPEC-009 | **Approved and implemented** — self-contained 4.8 MB HTML report, no external references, outlier rate stated three times (D-021: no Quarto) |
 | SPEC-010 | **Approved and implemented** — paced `next` decision, `runs` history, Task Scheduler script; picks Formula next (0 videos) |
-| SPEC-011 | **Approved and implemented** — dictionary + ending + calibrated fuzzy matching; 330 of 4,837 segments mention a known actor (6.8 %); **G-5 passed at 0.96** (48/50), so named *mentions* may be published — never speech, airtime or sentiment |
+| SPEC-011 | **Approved and implemented** — dictionary + ending + calibrated fuzzy matching; G-5 passed at 0.96; **D-031 adds title/role exclusion** for ASR name substitution (75 of 365 matched segments excluded, Saakashvili 108 → 84) |
 | SPEC-012 | **Approved and implemented** — co-occurrence network; **unit = broadcast** (D-030: segment level gives 0.43 % of units, video level 17.9 %); top pair Kobakhidze–Papuashvili in 17 of 262 broadcasts |
 | SPEC-013 | **Implemented, gate FAILED** — stance labelling (schema v5, prompt v2 with verified quotes); G-8 review found ≤ 0.62 agreement across five failure classes, three unfixable by thresholds. **Not publishable**; v2 needs its own review (`G8-VALIDATION.md`) |
 | Analytical policy | **In force** (D-023) — seven numeric publication gates in [`ANALYTICAL-POLICY.md`](ANALYTICAL-POLICY.md); no substantive claim passes them yet |

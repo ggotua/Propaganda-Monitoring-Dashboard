@@ -1060,8 +1060,11 @@ def _cmd_actors(
     print(
         f"segment method: {ACTIVE_SEG_METHOD} | analysed {scan.analysed_segments} segments | "
         f"{scan.matched_segments} mention at least one known actor "
-        f"({scan.matched_segments / max(scan.analysed_segments, 1):.1%})"
+        f"({scan.matched_segments / max(scan.analysed_segments, 1):.1%}) | "
+        f"excluded {scan.excluded_segments} (title/role contradiction)"
     )
+    for note in scan.suspect_notes:
+        print(f"  excluded: {note}")
     print(f"\n{'actor':18} {'role':18} {'segments':>8} {'share':>7} {'fuzzy':>6}")
     for stat in scan.stats[:top]:
         print(

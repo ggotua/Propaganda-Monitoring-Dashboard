@@ -222,6 +222,71 @@ def test_papashvili_is_not_papuashvili() -> None:
     assert match_token("პაპუაშვილი", speaker) is not None
 
 
+def test_title_conflict_flags_an_ex_president_in_a_presidential_segment() -> None:
+    """Measured defect (G-8 review): the president's name was transcribed as Saakashvili."""
+    from gtaf.domain.actors import title_conflict
+
+    ex = Actor("s", "სააკაშვილი", "Saakashvili", "ex-president")
+    text = "საქართველოს პრეზიდენტი მსოფლიო ლიდერებს სიტყვით მიმართავს"
+
+    reason = title_conflict(text, ex)
+    assert reason is not None
+    assert "ex-president" in reason
+
+
+def test_title_conflict_accepts_a_former_president_when_former_is_stated() -> None:
+    """`ყოფილი პრეზიდენტი` is the correct way to speak about him; that must not be excluded."""
+    from gtaf.domain.actors import title_conflict
+
+    ex = Actor("s", "სააკაშვილი", "Saakashvili", "ex-president")
+    text = "ყოფილი პრეზიდენტი მიხეილ სააკაშვილი კომენტარს აკეთებს"
+    assert title_conflict(text, ex) is None
+
+
+def test_title_conflict_ignores_non_presidential_roles() -> None:
+    """An MP in a segment about the president is ordinary news, not a substitution."""
+    from gtaf.domain.actors import title_conflict
+
+    mp = Actor("p", "პაპუაშვილი", "Papuashvili", "parliament speaker")
+    assert title_conflict("საქართველოს პრეზიდენტი სიტყვით გამოვა", mp) is None
+
+
+def test_two_presidents_in_one_segment_is_not_an_event() -> None:
+    """Two presidents matching at once is a transcription error, flagged for exclusion."""
+    from gtaf.domain.actors import Mention, ambiguous_mentions
+
+    ex = Actor("s", "სააკაშვილი", "Saakashvili", "ex-president")
+    current = Actor("k", "ყაველაშვილი", "Kavelashvili", "president")
+    mentions = (
+        Mention("s", "სააკაშვილი", "exact", 1.0),
+        Mention("k", "ყაველაშვილი", "exact", 1.0),
+    )
+
+    reason = ambiguous_mentions(mentions, (ex, current))
+    assert reason is not None
+    assert "presidents" in reason
+
+
+def test_scan_excludes_conflicted_segments_and_reports_them() -> None:
+    """The exclusion is visible in the result, not silent."""
+    from gtaf.application.actors import scan_actors
+
+    ex = Actor("s", "სააკაშვილი", "Saakashvili", "ex-president")
+    reader = FakeSegmentReader(
+        [
+            # The ASR substitution case: the name is present, and the text calls him the president.
+            "საქართველოს პრეზიდენტი მიხეილ სააკაშვილი მსოფლიო ლიდერებს მიმართავს",
+            "მიხეილ სააკაშვილი კომენტარს აკეთებს",
+        ]
+    )
+    scan = scan_actors(reader, (ex,), method="drift")
+
+    assert scan.matched_segments == 2
+    assert scan.excluded_segments == 1
+    assert scan.suspect_notes
+    assert scan.stats[0].segments == 1
+
+
 def test_context_window_contains_a_late_token() -> None:
     """Found by inspecting the first generated file: the match sat past the truncation point."""
     text = "სიტყვა " * 80 + "კობახიძე" + " კიდევ " * 40

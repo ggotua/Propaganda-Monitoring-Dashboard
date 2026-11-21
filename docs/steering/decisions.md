@@ -1094,3 +1094,42 @@ explicit rather than buried in a parameter. Revisit if: the corpus gains channel
 level may become dense enough to be the better default), or the dictionary grows enough that two names
 sharing a story becomes common.
 
+---
+
+## D-031: A mention the ASR invented is excluded by a title/role check, and the exclusion is reported
+
+Status: Accepted (2026-11-21). Found by review, fixed by a checkable rule.
+
+Context: the G-8 review found three segments about **President Kavelashvili** addressing COP31 that contain
+the literal string `მიხეილ სააკაშვილი`. The ASR substituted a famous surname. No matching rule could catch
+this — the string really is in the text — and it exposed a gap in G-5's meaning: that gate validated "the
+name appears in the text", not "the person was on air".
+
+Decision:
+1. **Role/title contradiction excludes a segment.** An actor whose role is `ex-president` in a segment that
+   speaks of `პრეზიდენტი` without `ყოფილი` (former) is a contradiction; so is the reverse.
+2. **Two presidents matching in one segment** is a transcription error, not a political event: excluded.
+3. **Exclusions are counted and printed**, never silent. The CLI reports `excluded N (title/role
+   contradiction)` with up to five example segment ids and reasons, and `ActorScan` carries them.
+4. **Kavelashvili joins the dictionary**, so the substitution produces an ambiguity instead of a lonely,
+   confident match.
+
+Measured effect: **75 of 365 matched segments excluded (20 %)**, Saakashvili 108 → **84**, and the excluded
+examples inspected by hand are genuinely about Kavelashvili (two spell his name correctly, one as the ASR
+variant `ყავალაშვილი`, which the fuzzy matcher finds).
+
+Rejected:
+- **Publish both guarded and unguarded counts side by side** — tempting, but a reader will pick the larger
+  number and the caveat will not survive; the exclusion is reported as a count and a reason instead.
+- **Title heuristics for every role** — MP, analyst, party founder are too fluid; false alarms would erode
+  trust in the guard and hide real mentions.
+- **Dropping every segment mentioning `პრეზიდენტი` after 2024** as first suggested — that discards genuine
+  coverage of the presidency, which is itself analytically interesting.
+
+Consequences: mention counts are now **conservative** — they exclude a fifth of matched segments, some of
+which may be genuine references to Saakashvili phrased without the word "former". The direction is
+deliberate: undercounting a famous figure is visible as a gap; overcounting him fabricates airtime. The
+trade-off is recorded here and in `G8-VALIDATION.md`, and the guard is a rule a reader can check, unlike a
+model's judgement. Revisit if: a reliable second signal (video description, programme metadata) can
+disambiguate without discarding segments.
+

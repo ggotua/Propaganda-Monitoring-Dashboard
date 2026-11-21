@@ -151,7 +151,6 @@ class Actor:
     role: str = ""
     aliases: tuple[str, ...] = ()
 
-
 @dataclass(frozen=True, slots=True)
 class Mention:
     """One matched occurrence.
@@ -167,6 +166,70 @@ class Mention:
     token: str
     method: str
     ratio: float
+
+
+# Titles whose presence can contradict an actor's role. Measured need (G-8 review, 2026-11-21): the ASR
+# transcribed the president's name as `სააკაშვილი`, and no matching rule could have caught it — the string
+# really was in the text. A role/title check can: an "ex-president" in a segment that speaks of "the
+# president" without the word "former" is a contradiction worth flagging.
+TITLE_PRESIDENT = "პრეზიდენტი"
+FORMER_MARKER = "ყოფილი"
+
+
+def title_conflict(text: str, actor: Actor) -> str | None:
+    """Return a reason when the text's titles contradict the actor's role.
+
+    Args:
+        text: Segment text.
+        actor: Actor whose role is being checked.
+
+    Returns:
+        A short reason, or None when nothing contradicts.
+
+    Notes:
+        Only the presidency is checked, because it is the case that actually occurred and because it is the
+        one role in the dictionary where a change of office in 2024 makes substitution likely. Other roles
+        (MP, analyst) are too fluid to test this way without generating false alarms.
+    """
+    if "president" not in actor.role:
+        return None
+    lowered = text.lower()
+    if TITLE_PRESIDENT not in lowered:
+        return None
+    mentions_former = FORMER_MARKER in lowered
+    if actor.role.startswith("ex-") and not mentions_former:
+        return f"{actor.en} is an ex-president but the text speaks of the president"
+    if not actor.role.startswith("ex-") and mentions_former:
+        return f"{actor.en} is the president but the text speaks of a former president"
+    return None
+
+
+def ambiguous_mentions(mentions: Sequence[Mention], actors: Sequence[Actor]) -> str | None:
+    """Return a reason when two actors share an incompatible role in one segment.
+
+    Args:
+        mentions: Mentions found in the segment.
+        actors: Dictionary.
+
+    Returns:
+        A short reason, or None.
+
+    Notes:
+        Two presidents in one sentence is not a political event; it is a transcription error. Flagging the
+        pair keeps the segment out of a published count instead of letting whichever name was recognised
+        first decide it.
+    """
+    by_id = {actor.actor_id: actor for actor in actors}
+    presidents = [
+        by_id[mention.actor_id]
+        for mention in mentions
+        if mention.actor_id in by_id and "president" in by_id[mention.actor_id].role
+    ]
+    if len(presidents) > 1:
+        names = " and ".join(actor.en for actor in presidents)
+        return f"{names} both match, and both are presidents"
+    return None
+
 
 
 def stem(surname: str) -> str:

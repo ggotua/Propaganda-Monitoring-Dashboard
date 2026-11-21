@@ -16,7 +16,7 @@ from typing import Protocol
 
 import yaml
 
-from gtaf.domain.actors import Actor, find_mentions, load_actors
+from gtaf.domain.actors import Actor, ambiguous_mentions, find_mentions, load_actors, title_conflict
 
 
 class SegmentReader(Protocol):
@@ -59,14 +59,19 @@ class ActorScan:
     Attributes:
         analysed_segments: Denominator.
         stats: Per-actor rows, largest first.
-        matched_segments: Segments with at least one actor mention.
+        matched_segments: Segments with at least one actor mention before exclusions.
         fuzzy_mentions: Total fuzzy matches, the audit workload.
+        excluded_segments: Segments dropped because the text's title contradicts the actor's role, or
+            because two actors with the same role matched — the ASR name-substitution case.
+        suspect_notes: Up to five readable examples of why segments were excluded.
     """
 
     analysed_segments: int
     stats: tuple[ActorStat, ...]
     matched_segments: int
     fuzzy_mentions: int
+    excluded_segments: int = 0
+    suspect_notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,11 +250,25 @@ def scan_actors(reader: SegmentReader, actors: Sequence[Actor], *, method: str) 
     }
     matched = 0
     fuzzy_total = 0
+    excluded = 0
+    notes: list[str] = []
 
-    for _segment_id, text in segments:
+    for segment_id, text in segments:
         mentions = find_mentions(text, actors)
-        if mentions:
-            matched += 1
+        if not mentions:
+            continue
+        matched += 1
+
+        reasons = [reason for actor in actors if (reason := title_conflict(text, actor))]
+        ambiguity = ambiguous_mentions(mentions, actors)
+        if ambiguity:
+            reasons.append(ambiguity)
+        if reasons:
+            excluded += 1
+            if len(notes) < 5:
+                notes.append(f"{segment_id}: {reasons[0]}")
+            continue
+
         for mention in mentions:
             bucket = per_actor[mention.actor_id]
             bucket["segments"] += 1
@@ -280,6 +299,8 @@ def scan_actors(reader: SegmentReader, actors: Sequence[Actor], *, method: str) 
         stats=tuple(stats),
         matched_segments=matched,
         fuzzy_mentions=fuzzy_total,
+        excluded_segments=excluded,
+        suspect_notes=tuple(notes),
     )
 
 
