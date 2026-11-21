@@ -48,7 +48,7 @@ from gtaf.application.schedule import (
 )
 from gtaf.application.segment import segment_video
 from gtaf.application.segment_drift import segment_video_drift
-from gtaf.application.stance import label_stance
+from gtaf.application.stance import label_stance, review_sample
 from gtaf.application.text import sentences_for_video
 from gtaf.application.topic_labels import label_topics
 from gtaf.application.topics import InsufficientDataError, run_topics
@@ -261,6 +261,18 @@ def _build_parser() -> argparse.ArgumentParser:
     stance.add_argument("--limit", type=int, default=40, help="segments to label; 0 for all")
     stance.add_argument("--provider", default="deepseek")
     stance.add_argument("--budget", type=float, default=None, help="monthly cap in USD")
+    stance.add_argument(
+        "--export-sample",
+        type=int,
+        default=0,
+        help="write N labelled segments for the G-8 human check instead of labelling",
+    )
+    stance.add_argument(
+        "--out",
+        type=Path,
+        default=Path("reports/g8-stance-review.md"),
+        help="where to write the G-8 review file",
+    )
 
     return parser
 
@@ -1174,17 +1186,21 @@ def _cmd_stance(
     limit: int,
     provider: str,
     budget: float | None,
+    export_sample: int = 0,
+    out_path: Path | None = None,
 ) -> int:
-    """Label stance toward one actor and report the counts (SPEC-013).
+    """Label stance toward one actor, or export a G-8 review sample.
 
     Args:
-        db_path: Database file, read-write (labels are stored).
+        db_path: Database file.
         config_path: Actor dictionary.
         env_file: Path to `.env`.
         target: Actor id, English or Georgian name.
         limit: Segments to label; 0 for all.
         provider: Provider key.
         budget: Monthly cap in USD, or None.
+        export_sample: When non-zero, write that many labelled segments instead of labelling.
+        out_path: Destination for the review file.
 
     Returns:
         Process exit code.
@@ -1195,6 +1211,50 @@ def _cmd_stance(
     except KeyError as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_CONFIG
+
+    if export_sample:
+        conn = open_database(db_path, read_only=True)
+        try:
+            rows = DuckDBRepository(conn).stance_rows(actor.actor_id)
+        finally:
+            conn.close()
+        if not rows:
+            print(
+                f"no stored labels for {actor.actor_id}; run `gtaf stance --target "
+                f"{actor.actor_id}` first",
+                file=sys.stderr,
+            )
+            return EXIT_CONFIG
+        sample = review_sample(rows, actor=actor, size=export_sample)
+        counts: dict[str, int] = {}
+        for row in sample:
+            counts[row.label] = counts.get(row.label, 0) + 1
+        lines = [
+            f"# G-8 review — stance toward {actor.en}",
+            "",
+            f"{len(sample)} labelled segments, stratified by the model's verdict "
+            f"({', '.join(f'{label}: {count}' for label, count in sorted(counts.items()))}).",
+            "",
+            "For each row put `y` if you agree with the model's verdict, `n` if you do not. "
+            "Use `n` when the text does not actually evaluate the person, when it says the opposite, "
+            "or when the segment is unreadable.",
+            "",
+            "Agreement = y / total, **and separately per label class**. The gate needs overall >= 0.80 "
+            "with no class clearly broken.",
+            "",
+            "| # | model label | conf | model rationale | segment text | agree? |",
+            "|---|---|---|---|---|---|",
+        ]
+        for row in sample:
+            lines.append(
+                f"| {row.number} | {row.label} | {row.confidence:.2f} | {row.rationale} | "
+                f"{row.text} |  |"
+            )
+        destination = out_path or Path("reports/g8-stance-review.md")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print(f"wrote {destination} ({len(sample)} rows)")
+        return EXIT_OK
 
     conn = connect(db_path, read_only=False)
     try:
@@ -1311,6 +1371,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 limit=args.limit,
                 provider=args.provider,
                 budget=args.budget,
+                export_sample=args.export_sample,
+                out_path=args.out,
             )
         if args.command == "network":
             return _cmd_network(

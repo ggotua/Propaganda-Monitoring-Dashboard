@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from gtaf.application.actors import SegmentReader
-from gtaf.domain.actors import Actor, find_mentions
+from gtaf.domain.actors import Actor, find_mentions, match_token, tokenise
 from gtaf.domain.stance import (
     PROMPT_VERSION,
     build_prompt,
@@ -138,6 +138,123 @@ def label_stance(
         unparsable=unparsable,
         counts=summarise(labels),
         cost_usd=round(cost, 6),
+    )
+
+
+def _window_around_target(text: str, actor: Actor, *, width: int = 180) -> str:
+    """Return text around the target's mention, falling back to the segment start.
+
+    Args:
+        text: Full segment text.
+        actor: Target person.
+        width: Characters to keep on each side.
+
+    Returns:
+        A window that contains the mention when the segment has one.
+
+    Notes:
+        Same defect as the G-5 file (SPEC-011): showing the first N characters hid the name, so a reviewer
+        read a sentence with no target in it and could not judge the label. Inflected forms are located by
+        matching tokens, not by substring search on the dictionary form.
+    """
+    cleaned = text.replace("\n", " ")
+    position = -1
+    for token in tokenise(cleaned):
+        if match_token(token, actor) is not None:
+            position = cleaned.lower().find(token)
+            if position >= 0:
+                break
+    if position < 0:
+        return cleaned[: width * 2]
+    start = max(0, position - width // 2)
+    end = min(len(cleaned), position + width * 2)
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(cleaned) else ""
+    return f"{prefix}{cleaned[start:end]}{suffix}"
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewRow:
+    """One labelled segment offered for human verification (G-8).
+
+    Attributes:
+        number: Position in the sample.
+        segment_id: Where it came from.
+        label: The model's verdict.
+        confidence: The model's own confidence.
+        rationale: The model's reason, so a reviewer sees what it was thinking.
+        text: Segment text, windowed around the target where possible.
+    """
+
+    number: int
+    segment_id: str
+    label: str
+    confidence: float
+    rationale: str
+    text: str
+
+
+def review_sample(
+    rows: Sequence[tuple[str, str, float, str, str]],
+    *,
+    actor: Actor,
+    size: int = 50,
+    seed: int = 42,
+) -> tuple[ReviewRow, ...]:
+    """Build a deterministic, label-stratified sample for the G-8 check.
+
+    Args:
+        rows: ``(segment_id, label, confidence, rationale, text)`` from storage.
+        actor: Target person, used to centre each row on the mention.
+        size: How many to offer.
+        seed: Fixed seed, so a review is reproducible.
+
+    Returns:
+        The sample, numbered.
+
+    Notes:
+        Stratified **by label**, because an overall agreement figure hides a class the model gets wrong. A
+        model that answers `critical` everywhere would score well on a sample drawn mostly from `critical`;
+        every non-empty label class therefore contributes proportionally, with at least one row each.
+    """
+    if not rows:
+        return ()
+
+    import random
+
+    from gtaf.domain.stance import LABELS
+
+    rng = random.Random(seed)
+    by_label: dict[str, list[int]] = {label: [] for label in LABELS}
+    for index, row in enumerate(rows):
+        by_label.setdefault(row[1], []).append(index)
+
+    chosen: list[int] = []
+    if len(rows) <= size:
+        chosen = list(range(len(rows)))
+    else:
+        # At least one per class first, then fill from the rest. Indices, not values: rows that are
+        # identical tuples (same segment text, same label) would otherwise all disappear from the pool at
+        # once and the sample would silently come out short.
+        for indices in by_label.values():
+            if indices:
+                chosen.append(rng.choice(indices))
+        remaining = size - len(chosen)
+        pool = [index for index in range(len(rows)) if index not in set(chosen)]
+        if remaining > 0 and pool:
+            chosen.extend(rng.sample(pool, min(remaining, len(pool))))
+    rng.shuffle(chosen)
+
+    return tuple(
+        ReviewRow(
+            number=number,
+            segment_id=rows[index][0],
+            label=rows[index][1],
+            confidence=rows[index][2],
+            rationale=rows[index][3][:200].replace("|", "\\|").replace("\n", " "),
+            text=_window_around_target(rows[index][4], actor).replace("|", "\\|"),
+        )
+        for number, index in enumerate(chosen[:size], start=1)
     )
 
 

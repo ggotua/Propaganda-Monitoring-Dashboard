@@ -179,3 +179,45 @@ def test_counts_sum_to_labelled() -> None:
     )
 
     assert sum(result.counts.values()) == result.labelled
+
+
+def test_review_sample_covers_every_label_class() -> None:
+    """G-8 needs the model's hard verdicts, not a draw that is 90 % `critical`."""
+    from gtaf.application.stance import review_sample
+
+    rows = (
+        [("s1", "critical", 0.9, "r", "ტექსტი")] * 40
+        + [("s2", "unclear", 0.5, "r", "ტექსტი")] * 5
+        + [("s3", "neutral", 0.6, "r", "ტექსტი")] * 5
+    )
+    sample = review_sample(rows, actor=TARGET, size=12, seed=3)
+
+    assert {row.label for row in sample} == {"critical", "unclear", "neutral"}
+    assert len(sample) == 12
+
+
+def test_review_sample_is_deterministic() -> None:
+    """A review must be reproducible: same seed, same rows."""
+    from gtaf.application.stance import review_sample
+
+    rows = [("s1", "critical", 0.9, "r", "ა")] * 10 + [("s2", "unclear", 0.5, "r", "ბ")] * 10
+    first = review_sample(rows, actor=TARGET, size=8, seed=11)
+    second = review_sample(rows, actor=TARGET, size=8, seed=11)
+
+    assert [(row.segment_id, row.label) for row in first] == [
+        (row.segment_id, row.label) for row in second
+    ]
+    assert [row.number for row in first] == list(range(1, 9))
+
+
+def test_review_row_shows_the_name_not_the_start_of_the_segment() -> None:
+    """Found by opening the first generated file: the target sat past the truncation point."""
+    from gtaf.application.stance import review_sample
+
+    long_text = "შესავალი " * 60 + "სააკაშვილი კრიტიკულად " + "დასასრული " * 60
+    sample = review_sample(
+        [("s1", "critical", 0.9, "r", long_text)], actor=TARGET, size=1
+    )
+
+    assert "სააკაშვილი" in sample[0].text
+    assert sample[0].text.startswith("…")

@@ -509,6 +509,32 @@ class DuckDBRepository:
         ).fetchall()
         return tuple((str(row[0]), _as_int(row[1])) for row in rows)
 
+    def stance_rows(self, target: str) -> tuple[tuple[str, str, float, str, str], ...]:
+        """Return stored stance labels for a target with their segment text.
+
+        Args:
+            target: Actor id.
+
+        Returns:
+            ``(segment_id, label, confidence, rationale, segment_text)`` ordered by segment id.
+        """
+        rows = self._conn.execute(
+            "SELECT s.segment_id, s.label, s.confidence, coalesce(s.rationale, ''), g.text "
+            "FROM stance s JOIN segments g ON g.segment_id = s.segment_id "
+            "WHERE s.target = ? ORDER BY s.segment_id",
+            [target],
+        ).fetchall()
+        return tuple(
+            (
+                str(row[0]),
+                str(row[1]),
+                float(row[2]) if row[2] is not None else 0.0,
+                str(row[3]),
+                str(row[4]),
+            )
+            for row in rows
+        )
+
     def latest_topics_run(self) -> str | None:
         """Return the newest run that produced topics.
 
