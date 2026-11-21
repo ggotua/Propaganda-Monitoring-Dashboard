@@ -162,8 +162,8 @@ def test_limit_stops_the_pass() -> None:
 def test_counts_sum_to_labelled() -> None:
     """The reported denominator is the labelled rows, so percentages cannot exceed 100 %."""
     replies = [
-        '{"label": "critical", "confidence": 0.6, "rationale": "x"}',
-        '{"label": "unclear", "confidence": 0.4, "rationale": "y"}',
+        '{"label": "critical", "confidence": 0.6, "rationale": "x", "quote": "სააკაშვილი"}',
+        '{"label": "unclear", "confidence": 0.4, "rationale": "y", "quote": "სააკაშვილი"}',
     ]
     gateway = FakeGateway(replies)
     store = FakeStore()
@@ -179,6 +179,44 @@ def test_counts_sum_to_labelled() -> None:
     )
 
     assert sum(result.counts.values()) == result.labelled
+
+
+def test_quote_is_verified_against_the_segment() -> None:
+    """Measured failure in the first review: rationales quoted words absent from the segment."""
+    from gtaf.domain.stance import parse_stance, verify_quote
+
+    text = "პრეზიდენტი დღეს ანტალიაში გაემგზავრება და კონფერენციაში მიიღებს მონაწილეობას"
+    assert verify_quote("დღეს ანტალიაში გაემგზავრება", text) is True
+    assert verify_quote("მან თქვა, რომ ყველაფერი ცრუობს", text) is False
+
+    reply = '{"label": "neutral", "confidence": 0.5, "quote": "დღეს ანტალიაში", "rationale": "x"}'
+    parsed = parse_stance(reply, segment_text=text)
+    assert parsed is not None
+    assert parsed.quote_verified is True
+
+
+def test_invented_quote_is_marked_not_trusted() -> None:
+    """An unverifiable quote keeps the label but records that its evidence is absent."""
+    from gtaf.domain.stance import parse_stance
+
+    text = "საქართველოს პრეზიდენტი ანტალიაშია"
+    reply = (
+        '{"label": "critical", "confidence": 0.9, "quote": "სრულიად გამოგონილი ციტატა", '
+        '"rationale": "x"}'
+    )
+    parsed = parse_stance(reply, segment_text=text)
+
+    assert parsed is not None
+    assert parsed.quote_verified is False
+
+
+def test_prompt_v2_states_the_target_rule_and_quote_duty() -> None:
+    """The two v2 additions must be in the prompt, not only in a document."""
+    from gtaf.domain.stance import build_prompt
+
+    prompt = build_prompt("ტექსტი", target_en="Saakashvili", target_ka="სააკაშვილი")
+    assert "არ არის მისი შეფასება" in prompt  # hostility to an associate is not the target's evaluation
+    assert "quote" in prompt
 
 
 def test_review_sample_covers_every_label_class() -> None:

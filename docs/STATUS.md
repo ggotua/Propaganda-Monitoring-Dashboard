@@ -110,7 +110,7 @@ were taken during implementation.
 | SPEC-010 | **Approved and implemented** — paced `next` decision, `runs` history, Task Scheduler script; picks Formula next (0 videos) |
 | SPEC-011 | **Approved and implemented** — dictionary + ending + calibrated fuzzy matching; 330 of 4,837 segments mention a known actor (6.8 %); **G-5 passed at 0.96** (48/50), so named *mentions* may be published — never speech, airtime or sentiment |
 | SPEC-012 | **Approved and implemented** — co-occurrence network; **unit = broadcast** (D-030: segment level gives 0.43 % of units, video level 17.9 %); top pair Kobakhidze–Papuashvili in 17 of 262 broadcasts |
-| SPEC-013 | **Approved and implemented, gate OPEN** — stance labelling via the gateway (schema v4); first pass on 30 segments: 60 % critical / 13.3 % neutral / 26.7 % unclear, $0.011. **Not publishable until G-8** |
+| SPEC-013 | **Implemented, gate FAILED** — stance labelling (schema v5, prompt v2 with verified quotes); G-8 review found ≤ 0.62 agreement across five failure classes, three unfixable by thresholds. **Not publishable**; v2 needs its own review (`G8-VALIDATION.md`) |
 | Analytical policy | **In force** (D-023) — seven numeric publication gates in [`ANALYTICAL-POLICY.md`](ANALYTICAL-POLICY.md); no substantive claim passes them yet |
 | Trunk & release | **`main` created, tagged `v0.1.0`** (D-022); future work on per-SPEC branches merged to `main` |
 | D-007 interpreter chain | **CLOSED 2026-11-13** — full chain imports on Python 3.13.1 (D-019). No fallback to 3.12 |

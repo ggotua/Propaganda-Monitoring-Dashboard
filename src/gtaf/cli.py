@@ -1276,7 +1276,7 @@ def _cmd_stance(
     print(
         f"target: {actor.en} ({actor.ka}) | segments mentioning them: {result.asked} | "
         f"labelled: {result.labelled} | unparsable: {result.unparsable} | "
-        f"cost: ${result.cost_usd:.6f}"
+        f"quote verified: {result.verified}/{result.labelled} | cost: ${result.cost_usd:.6f}"
     )
     if total:
         print()

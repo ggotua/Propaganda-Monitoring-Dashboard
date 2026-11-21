@@ -1,7 +1,10 @@
 # G-5 validation record — actor matching
 
-Status: **PASSED**, 2026-11-20. Gate G-5 of `ANALYTICAL-POLICY.md`: the entity half required agreement
-≥ 0.80 on a 50-mention spot check.
+Status: **PASSED with a narrower meaning than recorded**, 2026-11-21. The 0.96 agreement stands, but the
+G-8 review of the next day showed what it does not cover: the matcher finds the name **in the text**, and
+the text itself can be wrong. Three reviewed segments about President Kavelashvili address COP31 contain
+the literal string `მიხეილ სააკაშვილი` — the ASR substituted a famous surname. Mention counts are
+therefore "the name appears in the text", not "the person appeared on air". See `G8-VALIDATION.md` §2.
 
 ## What was checked
 

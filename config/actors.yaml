@@ -84,6 +84,12 @@
   role: ex-president
   aliases: [გიორგი მარგველაშვილი]
 
+- id: kavelashvili
+  ka: ყაველაშვილი
+  en: Kavelashvili
+  role: president
+  aliases: [მიხეილ ყაველაშვილი]
+
 - id: makhashvili
   ka: მახაშვილი
   en: Makhashvili

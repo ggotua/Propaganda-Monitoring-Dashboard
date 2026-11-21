@@ -27,11 +27,14 @@ class StanceStore(Protocol):
 
     def store_stance(
         self,
-        rows: Sequence[tuple[str, str, str, float, str, str, str | None]],
+        rows: Sequence[
+            tuple[str, str, str, float, str, str, str | None, str, bool]
+        ],
         *,
         run_id: str | None,
     ) -> int:
-        """Write ``(segment_id, target, label, confidence, model, rationale, prompt_version)`` rows."""
+        """Write ``(segment_id, target, label, confidence, model, rationale, prompt_version, quote,
+        quote_verified)`` rows."""
         ...
 
 
@@ -52,6 +55,7 @@ class StanceResult:
         asked: Segments that mentioned the target and were sent.
         labelled: Labels stored.
         unparsable: Replies that could not be read as a label.
+        verified: Labels whose quote was found verbatim in the segment.
         counts: Label counts over the labelled rows.
         cost_usd: Total spend for this pass.
     """
@@ -60,6 +64,7 @@ class StanceResult:
     asked: int
     labelled: int
     unparsable: int
+    verified: int
     counts: dict[str, int]
     cost_usd: float
 
@@ -99,9 +104,10 @@ def label_stance(
         if limit and len(candidates) >= limit:
             break
 
-    rows: list[tuple[str, str, str, float, str, str, str | None]] = []
+    rows: list[tuple[str, str, str, float, str, str, str | None, str, bool]] = []
     labels: list[str] = []
     unparsable = 0
+    verified = 0
     cost = 0.0
 
     for segment_id, text in candidates:
@@ -111,10 +117,12 @@ def label_stance(
             provider=provider,
         )
         cost += float(getattr(response, "cost_usd", 0.0))
-        parsed = parse_stance(str(getattr(response, "text", "")))
+        parsed = parse_stance(str(getattr(response, "text", "")), segment_text=text)
         if parsed is None:
             unparsable += 1
             continue
+        if parsed.quote_verified:
+            verified += 1
         rows.append(
             (
                 segment_id,
@@ -124,6 +132,8 @@ def label_stance(
                 str(getattr(response, "model", "unknown")),
                 parsed.rationale,
                 PROMPT_VERSION,
+                parsed.quote,
+                parsed.quote_verified,
             )
         )
         labels.append(parsed.label)
@@ -136,6 +146,7 @@ def label_stance(
         asked=len(candidates),
         labelled=len(rows),
         unparsable=unparsable,
+        verified=verified,
         counts=summarise(labels),
         cost_usd=round(cost, 6),
     )

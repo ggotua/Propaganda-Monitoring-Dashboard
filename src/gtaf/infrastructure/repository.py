@@ -448,14 +448,15 @@ class DuckDBRepository:
 
     def store_stance(
         self,
-        rows: Sequence[tuple[str, str, str, float, str, str, str | None]],
+        rows: Sequence[tuple[str, str, str, float, str, str, str | None, str, bool]],
         *,
         run_id: str | None,
     ) -> int:
         """Write stance labels, replacing a previous label for the same key.
 
         Args:
-            rows: ``(segment_id, target, label, confidence, model, rationale, prompt_version)``.
+            rows: ``(segment_id, target, label, confidence, model, rationale, prompt_version, quote,
+                quote_verified)``.
             run_id: Optional run to attribute the labels to.
 
         Returns:
@@ -466,7 +467,17 @@ class DuckDBRepository:
         moment = _utc_now()
         self._conn.execute("BEGIN TRANSACTION")
         try:
-            for segment_id, target, label, confidence, model, rationale, prompt_version in rows:
+            for (
+                segment_id,
+                target,
+                label,
+                confidence,
+                model,
+                rationale,
+                prompt_version,
+                quote,
+                quote_verified,
+            ) in rows:
                 self._conn.execute(
                     "DELETE FROM stance WHERE segment_id = ? AND target = ? AND model = ? "
                     "AND prompt_version = ?",
@@ -474,8 +485,8 @@ class DuckDBRepository:
                 )
                 self._conn.execute(
                     "INSERT INTO stance (segment_id, target, label, confidence, model, "
-                    "prompt_version, run_id, rationale, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "prompt_version, run_id, rationale, quote, quote_verified, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
                         segment_id,
                         target,
@@ -485,6 +496,8 @@ class DuckDBRepository:
                         prompt_version,
                         run_id,
                         rationale,
+                        quote,
+                        quote_verified,
                         moment,
                     ],
                 )
