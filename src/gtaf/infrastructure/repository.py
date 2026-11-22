@@ -571,6 +571,49 @@ class DuckDBRepository:
             for row in rows
         )
 
+    def list_segments_with_date(
+        self, method: str | None = None
+    ) -> tuple[tuple[str, str, str], ...]:
+        """Return segments with their broadcast date.
+
+        Args:
+            method: Restrict to one ``seg_method``; None returns every method mixed.
+
+        Returns:
+            ``(segment_id, date_iso, text)`` ordered by date and time.
+        """
+        if method is None:
+            rows = self._conn.execute(
+                "SELECT s.segment_id, CAST(v.broadcast_date_local AS VARCHAR), s.text "
+                "FROM segments s JOIN videos v ON v.video_id = s.video_id "
+                "ORDER BY v.broadcast_date_local, s.start_s"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT s.segment_id, CAST(v.broadcast_date_local AS VARCHAR), s.text "
+                "FROM segments s JOIN videos v ON v.video_id = s.video_id "
+                "WHERE s.seg_method = ? ORDER BY v.broadcast_date_local, s.start_s",
+                [method],
+            ).fetchall()
+        return tuple((str(row[0]), str(row[1]), str(row[2])) for row in rows)
+
+    def topic_counts_by_day(self) -> tuple[tuple[str, str, int], ...]:
+        """Return ``(date_iso, topic_id, count)`` for the latest topics run.
+
+        Returns:
+            One row per date and topic, outliers included under topic ``-1``.
+        """
+        rows = self._conn.execute(
+            "SELECT CAST(v.broadcast_date_local AS VARCHAR), CAST(r.topic_id AS VARCHAR), count(*) "
+            "FROM res_topics r "
+            "JOIN segments s ON s.segment_id = r.segment_id "
+            "JOIN videos v ON v.video_id = s.video_id "
+            "WHERE r.run_id = ("
+            "  SELECT run_id FROM runs WHERE stage = 'topics' ORDER BY started_at DESC LIMIT 1) "
+            "GROUP BY 1, 2 ORDER BY 1, 2"
+        ).fetchall()
+        return tuple((str(row[0]), str(row[1]), _as_int(row[2])) for row in rows)
+
     def latest_topics_run(self) -> str | None:
         """Return the newest run that produced topics.
 

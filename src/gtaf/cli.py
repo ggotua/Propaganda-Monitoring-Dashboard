@@ -50,6 +50,7 @@ from gtaf.application.segment import segment_video
 from gtaf.application.segment_drift import segment_video_drift
 from gtaf.application.stance import label_stance, review_sample
 from gtaf.application.text import sentences_for_video
+from gtaf.application.timeline import actor_timeline, topic_timeline
 from gtaf.application.topic_labels import label_topics
 from gtaf.application.topics import InsufficientDataError, run_topics
 from gtaf.domain.actors import Actor
@@ -66,6 +67,7 @@ from gtaf.domain.models import Programme
 from gtaf.domain.networks import top_by_jaccard
 from gtaf.domain.segment import MAX_S, MIN_S, TARGET_S
 from gtaf.domain.stance import PROMPT_VERSION
+from gtaf.domain.timeline import reportability
 from gtaf.infrastructure.config_io import load_configuration
 from gtaf.infrastructure.db import (
     DatabaseLockedError,
@@ -282,6 +284,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path("reports/g8-stance-review.md"),
         help="where to write the G-8 review file",
     )
+
+    timeline = sub.add_parser("timeline", help="daily topic or actor series (SPEC-015)")
+    timeline.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    timeline.add_argument("--config", type=Path, default=Path("config/actors.yaml"))
+    timeline.add_argument("--by", choices=("topics", "actors"), default="topics")
+    timeline.add_argument("--top", type=int, default=8)
+    timeline.add_argument("--min-per-day", type=int, default=50)
 
     return parser
 
@@ -1317,6 +1326,54 @@ def _cmd_stance(
     return EXIT_OK
 
 
+def _cmd_timeline(
+    *, db_path: Path, config_path: Path, kind: str, top: int, min_per_day: int
+) -> int:
+    """Print the daily agenda series (SPEC-015).
+
+    Args:
+        db_path: Database file, read-only.
+        config_path: Actor dictionary, used when ``kind`` is actors.
+        kind: ``topics`` or ``actors``.
+        top: How many series to show.
+        min_per_day: Threshold below which a day is called thin.
+
+    Returns:
+        Process exit code.
+    """
+    conn = open_database(db_path, read_only=True)
+    try:
+        repo = DuckDBRepository(conn)
+        if kind == "topics":
+            result = topic_timeline(repo, top=top)
+        else:
+            result = actor_timeline(
+                repo, load_actor_config(config_path), method=ACTIVE_SEG_METHOD, top=top
+            )
+    finally:
+        conn.close()
+
+    ok, reasons = reportability(result.dates, result.daily_totals, min_per_day=min_per_day)
+    print(
+        f"{result.kind} | {len(result.dates)} day(s) | "
+        f"{sum(result.daily_totals.values())} segment(s) | reportable: {ok}"
+    )
+    for reason in reasons:
+        print(f"  limitation: {reason}")
+
+    header = "key".ljust(22) + "".join(day[-2:].rjust(7) for day in result.dates)
+    print(f"\n{header}")
+    for item in result.series:
+        cells = "".join(f"{cell.share * 100:>6.1f}" for cell in item.days)
+        print(f"{item.key[:22].ljust(22)}{cells}")
+    print("\ncells are percentages of that day's segments, so a busier day does not look like a spike.")
+    print(
+        "No trend is claimed: a trend needs three complete reporting windows (G-4), and this corpus "
+        "covers one period on one channel."
+    )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -1384,6 +1441,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "timeline":
+            return _cmd_timeline(
+                db_path=args.db,
+                config_path=args.config,
+                kind=args.by,
+                top=args.top,
+                min_per_day=args.min_per_day,
+            )
         if args.command == "stance":
             return _cmd_stance(
                 db_path=args.db,
