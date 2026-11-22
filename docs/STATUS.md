@@ -110,7 +110,7 @@ were taken during implementation.
 | SPEC-010 | **Approved and implemented** — paced `next` decision, `runs` history, Task Scheduler script; picks Formula next (0 videos) |
 | SPEC-011 | **Approved and implemented** — dictionary + ending + calibrated fuzzy matching; G-5 passed at 0.96; **D-031 adds title/role exclusion** for ASR name substitution (75 of 365 matched segments excluded, Saakashvili 108 → 84) |
 | SPEC-012 | **Approved and implemented** — co-occurrence network; **unit = broadcast** (D-030: segment level gives 0.43 % of units, video level 17.9 %); top pair Kobakhidze–Papuashvili in 17 of 262 broadcasts |
-| SPEC-013 | **Implemented, gate CONDITIONAL** — stance v2 passes overall at **0.84** (42/50; v1 was 0.66) but two classes are too small and one was contaminated; D-031 excludes title-conflicted segments (neutral class dropped 7 → 0). **Unpublished**; targeted neutral/supportive reviews pending |
+| SPEC-013 | **Implemented, gate PARTIAL** — stance v2: overall 0.84 (42/50); targeted check on the incumbent 28/29 (neutral 95 %, supportive 89 %). **Incumbent-criticism is unmeasured**: 1/94 critical labels on the only channel (Imedi). Stance for government targets stays unpublished until opposition channels are collected (blocked until 2026-11-25, D-024) |
 | Analytical policy | **In force** (D-023) — seven numeric publication gates in [`ANALYTICAL-POLICY.md`](ANALYTICAL-POLICY.md); no substantive claim passes them yet |
 | Trunk & release | **`main` created, tagged `v0.1.0`** (D-022); future work on per-SPEC branches merged to `main` |
 | D-007 interpreter chain | **CLOSED 2026-11-13** — full chain imports on Python 3.13.1 (D-019). No fallback to 3.12 |

@@ -224,6 +224,29 @@ class ReviewRow:
     text: str
 
 
+def _near_duplicate(left: str, right: str, *, threshold: float = 0.85) -> bool:
+    """Return True when two segments are near-identical by token overlap.
+
+    Args:
+        left: First text.
+        right: Second text.
+        threshold: Jaccard similarity above which they count as duplicates.
+
+    Returns:
+        True when the token sets overlap enough to be the same segment re-cut.
+
+    Notes:
+        The first two reviews found exact and near duplicates (#1/#10, #24/#26, and about a dozen summit
+        scheduling reports). Exact-text dedupe missed them because the drift segmenter cuts the same passage
+        at different offsets, so the strings differ slightly.
+    """
+    a = set(left.lower().split())
+    b = set(right.lower().split())
+    if not a or not b:
+        return False
+    return len(a & b) / len(a | b) >= threshold
+
+
 def review_sample(
     rows: Sequence[tuple[str, str, float, str, str]],
     *,
@@ -232,6 +255,7 @@ def review_sample(
     seed: int = 42,
     only_labels: Sequence[str] = (),
     dedupe: bool = True,
+    text_chars: int = 300,
 ) -> tuple[ReviewRow, ...]:
     """Build a deterministic, label-stratified sample for the G-8 check.
 
@@ -241,16 +265,17 @@ def review_sample(
         size: How many to offer.
         seed: Fixed seed, so a review is reproducible.
         only_labels: Restrict to these labels, for a targeted check of a rare class.
-        dedupe: Drop rows whose segment text repeats an earlier row.
+        dedupe: Drop rows whose segment text repeats an earlier row, exactly or nearly.
+        text_chars: Maximum characters of segment text in a cell, so a viewer does not truncate the row.
 
     Returns:
         The sample, numbered.
 
     Notes:
-        Three lessons from the first review are encoded here. **Stratify by label**, because an overall
-        figure hides a class the model gets wrong. **Exclude conflicted segments** (D-031), because the
-        reviewer found Kavelashvili's COP31 coverage labelled as Saakashvili. **Dedupe**, because near
-        identical segments made the real sample smaller than 50 while the denominator still said 50.
+        Three lessons from the reviews are encoded here. **Stratify by label**, because an overall figure
+        hides a class the model gets wrong. **Exclude conflicted segments** (D-031), because Kavelashvili's
+        COP31 coverage was labelled as Saakashvili. **Dedupe by similarity, not equality**, because
+        near-identical rows made the sample smaller than its stated denominator.
     """
     if not rows:
         return ()
@@ -260,16 +285,15 @@ def review_sample(
     from gtaf.domain.stance import LABELS
 
     filtered: list[tuple[str, str, float, str, str]] = []
-    seen_text: set[str] = set()
+    kept_texts: list[str] = []
     for row in rows:
         if only_labels and row[1] not in only_labels:
             continue
         if title_conflict(row[4], actor):
             continue
-        key = " ".join(row[4].lower().split())[:300]
-        if dedupe and key in seen_text:
+        if dedupe and any(_near_duplicate(row[4], other) for other in kept_texts):
             continue
-        seen_text.add(key)
+        kept_texts.append(row[4])
         filtered.append(row)
 
     if not filtered:
@@ -303,7 +327,9 @@ def review_sample(
             label=filtered[index][1],
             confidence=filtered[index][2],
             rationale=filtered[index][3][:200].replace("|", "\\|").replace("\n", " "),
-            text=_window_around_target(filtered[index][4], actor).replace("|", "\\|"),
+            text=_window_around_target(filtered[index][4], actor, width=text_chars // 2).replace(
+                "|", "\\|"
+            ),
         )
         for number, index in enumerate(chosen[:size], start=1)
     )

@@ -29,7 +29,7 @@ someone likes becomes the finding.
 |---|---|---|
 | G-5, WER half | **PASSES** | 12.3 % WER / 4.3 % CER, 373 words, and that is an *upper bound* because the reference was an edited article (D-028) |
 | G-5, entity half | **PASSES with a narrower meaning** (0.96, n=50) | 48/50; the check validated that the *matcher finds the name in the text*, **not** that the person was mentioned on air — ASR substitutes famous surnames (found 2026-11-21: the president's name transcribed as `სააკაშვილი`). See `G5-VALIDATION.md`, `G8-VALIDATION.md` §2 |
-| G-8, stance/framing labels | **CONDITIONAL PASS** (v2: 42/50 = 0.84) | overall bar cleared (v1 was 0.66), but `neutral` (3 rows) and `supportive` (1 row, wrong) are too small to judge, and the neutral class was contaminated by the ASR name substitution. Targeted review files exist; **stance stays unpublished** until they are checked |
+| G-8, stance/framing labels | **PARTIAL PASS by target type** | `critical` validated where it appears (Saakashvili 91 %, v2 review 0.84); `neutral`/`supportive` validated on the incumbent (95 %/89 %). **But the incumbent has 1/94 critical labels on the only channel collected**, so incumbent-criticism is unmeasured — stance for **government** targets stays unpublished until opposition channels are collected (D-024 blocks collection) |
 | G-1, G-2 | fail on current data | 38.2 % unclassified; largest topic 5.5 % of 4,837 segments |
 | G-3, G-4 | fail on current data | one channel, 11 days; no trend possible |
 

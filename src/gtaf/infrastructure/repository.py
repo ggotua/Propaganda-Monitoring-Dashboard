@@ -507,19 +507,30 @@ class DuckDBRepository:
             raise
         return len(rows)
 
-    def stance_counts(self, target: str) -> tuple[tuple[str, int], ...]:
+    def stance_counts(
+        self, target: str, *, prompt_version: str | None = None
+    ) -> tuple[tuple[str, int], ...]:
         """Return label counts for a target.
 
         Args:
             target: Actor id.
+            prompt_version: Restrict to one prompt version. Without it the counts mix label sets produced by
+                different prompts, which is how a v1 figure can appear beside a v2 one.
 
         Returns:
-            ``(label, count)`` rows ordered by label, so a caller can tell a zero from a missing row by
-            looking at the full label set it prints itself.
+            ``(label, count)`` rows ordered by label.
         """
-        rows = self._conn.execute(
-            "SELECT label, count(*) FROM stance WHERE target = ? GROUP BY 1 ORDER BY 1", [target]
-        ).fetchall()
+        if prompt_version is None:
+            rows = self._conn.execute(
+                "SELECT label, count(*) FROM stance WHERE target = ? GROUP BY 1 ORDER BY 1",
+                [target],
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT label, count(*) FROM stance WHERE target = ? AND prompt_version = ? "
+                "GROUP BY 1 ORDER BY 1",
+                [target, prompt_version],
+            ).fetchall()
         return tuple((str(row[0]), _as_int(row[1])) for row in rows)
 
     def stance_rows(

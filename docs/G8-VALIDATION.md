@@ -50,6 +50,51 @@ encouraging result so far in this project.
 4. **Rationales still invent.** #11 claims the text calls him a "psychopath"; #25 and #48 quote words absent
    from their segments. The labels on those rows are fine, but their stated evidence cannot be used.
 
+## Targeted check of `neutral` and `supportive` — Kobakhidze (2026-11-22)
+
+Reviewer: George. 30 rows, `neutral` 21 + `supportive` 9, under `stance-v2`.
+
+| Class | Agree | Rate |
+|---|---|---|
+| `neutral` | 20 / 21 | **95 %** (20/20 excluding one empty row — see note) |
+| `supportive` | 8 / 9 | **89 %** |
+| **Overall** | **28 / 29** | **97 %** |
+
+Rejected: **#1**, labelled `supportive` but a plain report of his Dublin speech — the same text as #10,
+which is correctly `neutral`; its rationale again cited content the segment does not contain ("criticism
+called unfair", "readiness for dialogue"). Borderline **#15** accepted: the outlet repeats his line as fact
+and says "our government", which endorses his position without praising him — accepted to stay consistent
+with how mild criticism was treated for Saakashvili.
+
+**Note on #30:** reported as having no segment text. The stored row is intact (8 cells, text present); the
+likely cause is a viewer truncating a very long last cell. Cells are now capped at 300 characters so a row
+cannot be clipped, and the near-duplicate check below was added in the same pass.
+
+### The critical class is untested for an incumbent, and this sample proves it
+
+The model gave **none** of these 30 rows `critical`. Across the whole corpus, under v2:
+
+| target | critical | neutral | unclear | supportive |
+|---|---|---|---|---|
+| Kobakhidze (PM, incumbent) | **1 / 94 (1.1 %)** | 64 | 5 | 24 |
+| Saakashvili (ex-president, opposition) | **46 / 90 (51 %)** | 0 | 44 | 0 |
+
+Two explanations fit, and **this corpus cannot separate them**:
+
+1. **The channel.** The only channel collected is **Imedi**, a government-aligned broadcaster. Its coverage
+   of the prime minister may genuinely contain almost no criticism.
+2. **The model.** It may read criticism of an incumbent as `unclear` or `neutral` — exactly the failure
+   direction that would bias a government-versus-opposition comparison. The Saakashvili results show it
+   handles `critical` well when the target is in opposition.
+
+That is why this is **not** a clean pass for Kobakhidze: the "no class clearly broken" condition cannot be
+met when the class is absent from the sample.
+
+**The decisive test is blocked by data, not by code.** Opposition channels (Formula, TV Pirveli) are
+configured in `config/channels.yaml`, but collection is still backing off from the caption-endpoint block
+(D-024): `gtaf next` reports *next attempt after 2026-11-25 02:47 UTC*. Until those channels exist, no
+review can distinguish channel bias from model bias.
+
 ## Contamination found by the reviewer, and what it revealed
 
 #7, #29 and #38 are **Kavelashvili at COP31**, not Saakashvili. After applying the D-031 title/role guard
