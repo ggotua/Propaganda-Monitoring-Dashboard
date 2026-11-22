@@ -28,8 +28,10 @@ from gtaf.domain.llm import (
 )
 from gtaf.infrastructure.llm_providers import Completion, Transport
 
-# Worst-case output used for the pre-call estimate, matching `maxOutputTokens` in the transports.
-MAX_OUTPUT_TOKENS = 512
+# Worst-case output used for the pre-call estimate. Raised from 512 after a measured truncation: Gemini's
+# reasoning tokens are drawn from the same budget, so a 512-token cap cut a JSON reply mid-object
+# (`{"label": "critical", "confidence": 0.95` with no closing brace) and the label became unparsable.
+MAX_OUTPUT_TOKENS = 2048
 
 
 class CallStore(Protocol):

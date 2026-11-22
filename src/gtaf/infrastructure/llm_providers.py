@@ -156,7 +156,7 @@ class GeminiTransport:
         """Call one Gemini model."""
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.0, "maxOutputTokens": 512},
+            "generationConfig": {"temperature": 0.0, "maxOutputTokens": 2048},
         }
         body = _post_json(
             f"{GEMINI_BASE}/{spec.model}:generateContent",
@@ -191,7 +191,7 @@ class DeepSeekTransport:
                 "model": spec.model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0,
-                "max_tokens": 512,
+                "max_tokens": 2048,
             },
             {"Authorization": f"Bearer {self._key}"},
         )

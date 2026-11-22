@@ -53,6 +53,7 @@ from gtaf.application.text import sentences_for_video
 from gtaf.application.timeline import actor_timeline, topic_timeline
 from gtaf.application.topic_labels import label_topics
 from gtaf.application.topics import InsufficientDataError, run_topics
+from gtaf.application.validation import validate_stance
 from gtaf.domain.actors import Actor
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 from gtaf.domain.llm import (
@@ -62,6 +63,7 @@ from gtaf.domain.llm import (
     LLMError,
     ProviderUnavailableError,
     QuotaExceededError,
+    VendorConflictError,
 )
 from gtaf.domain.models import Programme
 from gtaf.domain.networks import top_by_jaccard
@@ -291,6 +293,16 @@ def _build_parser() -> argparse.ArgumentParser:
     timeline.add_argument("--by", choices=("topics", "actors"), default="topics")
     timeline.add_argument("--top", type=int, default=8)
     timeline.add_argument("--min-per-day", type=int, default=50)
+
+    validate = sub.add_parser("validate", help="check stance labels with a second vendor (SPEC-016)")
+    validate.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    validate.add_argument("--config", type=Path, default=Path("config/actors.yaml"))
+    validate.add_argument("--env-file", type=Path, default=Path(".env"))
+    validate.add_argument("--target", required=True)
+    validate.add_argument("--primary", default="deepseek", help="provider that produced the labels")
+    validate.add_argument("--validator", default="gemini", help="provider that checks them")
+    validate.add_argument("--limit", type=int, default=50)
+    validate.add_argument("--budget", type=float, default=None)
 
     return parser
 
@@ -1382,6 +1394,108 @@ def _cmd_timeline(
     return EXIT_OK
 
 
+def _cmd_validate(
+    *,
+    db_path: Path,
+    config_path: Path,
+    env_file: Path,
+    target: str,
+    primary: str,
+    validator: str,
+    limit: int,
+    budget: float | None,
+) -> int:
+    """Validate stored stance labels with a second vendor (SPEC-016).
+
+    Args:
+        db_path: Database file, read-write for the validation rows.
+        config_path: Actor dictionary.
+        env_file: Path to `.env`.
+        target: Actor whose labels are checked.
+        primary: Provider that produced the labels.
+        validator: Provider that checks them; must be a different vendor.
+        limit: Maximum items to check.
+        budget: Monthly cap in USD, or None.
+
+    Returns:
+        Process exit code.
+    """
+    actors = load_actor_config(config_path)
+    try:
+        actor = _find_actor(actors, target)
+    except KeyError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_CONFIG
+
+    conn = connect(db_path, read_only=False)
+    try:
+        repo = DuckDBRepository(conn)
+        gateway = _gateway(conn, env_file, budget)
+        try:
+            result = validate_stance(
+                gateway,
+                repo,
+                repo,
+                actor=actor,
+                primary_provider=primary,
+                validator_provider=validator,
+                limit=limit,
+                method=ACTIVE_SEG_METHOD,
+            )
+        except VendorConflictError as exc:
+            print(f"refused: {exc}", file=sys.stderr)
+            return EXIT_CONFIG
+        except QuotaExceededError as exc:
+            print(
+                f"blocked: the validator vendor refused for quota ({exc}). "
+                "Cross-vendor validation needs a call per item; the Gemini free tier allows about 11 "
+                "calls a day, so a 50-item check spans several days or needs a paid tier.",
+                file=sys.stderr,
+            )
+            return EXIT_BLOCKED
+    finally:
+        conn.close()
+
+    agreement = result.agreement
+    print(
+        f"{actor.en}: primary={result.primary_provider} validator={result.validator_provider} | "
+        f"compared {result.compared} | unparsable {result.unparsable} | "
+        f"cost ${result.cost_usd:.6f}"
+    )
+    if not agreement.n:
+        if result.unparsable:
+            print(
+                f"no usable replies: {result.unparsable} response(s) could not be parsed. "
+                "Measured cause: the validator's output was truncated mid-JSON because reasoning "
+                "tokens share the output budget; the cap is now 2048 tokens."
+            )
+        else:
+            print("no shared items: nothing to compare")
+        return EXIT_OK
+
+    print(
+        f"\nagreement: {agreement.agree}/{agreement.n} = {agreement.rate:.1%} | "
+        f"Cohen's kappa = {agreement.kappa:.3f}"
+    )
+    print(f"\n{'class':11} {'agree':>6} {'total':>6} {'rate':>7}")
+    for label, agree, total in agreement.per_class:
+        print(f"{label:11} {agree:>6} {total:>6} {agree / total:>6.1%}")
+    print(
+        f"\ndisagreements: {len(agreement.disagreements)}"
+        + (
+            f" (first: {agreement.disagreements[0][0]} "
+            f"{agreement.disagreements[0][1]} vs {agreement.disagreements[0][2]})"
+            if agreement.disagreements
+            else ""
+        )
+    )
+    print(
+        "\nRaw agreement rises when one class dominates; kappa subtracts what chance would produce. "
+        "A high rate with a low kappa means both labellers defaulted to the same answer."
+    )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -1449,6 +1563,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "validate":
+            return _cmd_validate(
+                db_path=args.db,
+                config_path=args.config,
+                env_file=args.env_file,
+                target=args.target,
+                primary=args.primary,
+                validator=args.validator,
+                limit=args.limit,
+                budget=args.budget,
+            )
         if args.command == "timeline":
             return _cmd_timeline(
                 db_path=args.db,

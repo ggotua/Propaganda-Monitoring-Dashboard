@@ -614,6 +614,60 @@ class DuckDBRepository:
         ).fetchall()
         return tuple((str(row[0]), str(row[1]), _as_int(row[2])) for row in rows)
 
+    def stance_labels(self, target: str, *, prompt_version: str) -> dict[str, str]:
+        """Return segment id to primary label for one target and prompt version.
+
+        Args:
+            target: Actor id.
+            prompt_version: Only labels produced by this prompt.
+
+        Returns:
+            Mapping of segment id to label.
+        """
+        rows = self._conn.execute(
+            "SELECT segment_id, label FROM stance WHERE target = ? AND prompt_version = ?",
+            [target, prompt_version],
+        ).fetchall()
+        return {str(row[0]): str(row[1]) for row in rows}
+
+    def store_validation(
+        self, rows: Sequence[tuple[str, str, float]], *, validator_model: str
+    ) -> int:
+        """Write validation results.
+
+        Args:
+            rows: ``(segment_id, validator_model, agreement)``; the second element is ignored in favour of
+                ``validator_model`` so a caller cannot store a mismatched model name.
+            validator_model: Model that produced the verdicts.
+
+        Returns:
+            Number of rows written.
+        """
+        if not rows:
+            return 0
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            for segment_id, _ignored, agreement in rows:
+                self._conn.execute(
+                    "DELETE FROM validation WHERE segment_id = ? AND validator_model = ?",
+                    [segment_id, validator_model],
+                )
+                self._conn.execute(
+                    "INSERT INTO validation (run_id, segment_id, validator_model, agreement) "
+                    "VALUES (?, ?, ?, ?)",
+                    [
+                        None,
+                        segment_id,
+                        validator_model,
+                        agreement,
+                    ],
+                )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+        return len(rows)
+
     def latest_topics_run(self) -> str | None:
         """Return the newest run that produced topics.
 
