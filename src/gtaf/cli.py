@@ -703,14 +703,22 @@ def _cmd_report(
     try:
         repo = DuckDBRepository(conn)
         scan = None
+        actors: tuple[Actor, ...] = ()
         if actors_config.exists():
-            scan = scan_actors(repo, load_actor_config(actors_config), method=ACTIVE_SEG_METHOD)
+            actors = load_actor_config(actors_config)
+            scan = scan_actors(repo, actors, method=ACTIVE_SEG_METHOD)
+        timeline = topic_timeline(repo, top=8)
+        actor_series = (
+            actor_timeline(repo, actors, method=ACTIVE_SEG_METHOD, top=6) if actors else None
+        )
         context = build_report(
             conn,
             channel_id=channel,
             since=date.fromisoformat(since) if since else None,
             until=date.fromisoformat(until) if until else None,
             actor_scan=scan,
+            topic_timeline=timeline,
+            actor_timeline=actor_series,
         )
     finally:
         conn.close()

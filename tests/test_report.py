@@ -165,6 +165,51 @@ def populated_db(initialized_db: Path) -> Path:
     return initialized_db
 
 
+def test_timeline_section_states_that_no_trend_is_claimed() -> None:
+    """G-4: a daily table may appear, but never as a trend.
+
+    Ten points on one channel can show what the coverage looked like; they cannot show a direction. The
+    caption has to say so on the page, not only in a document.
+    """
+    from types import SimpleNamespace
+
+    from gtaf.application.timeline import TimelineResult
+    from gtaf.domain.timeline import DayCell, Series
+    from gtaf.presentation.report_html import _timeline_section
+
+    series = Series(
+        key="t0",
+        total=40,
+        days=(DayCell("2026-11-04", 0.2), DayCell("2026-11-05", 0.4)),
+    )
+    timeline = TimelineResult(
+        kind="topics",
+        series=(series,),
+        dates=("2026-11-04", "2026-11-05"),
+        daily_totals={"2026-11-04": 400, "2026-11-05": 300},
+        reportable=False,
+        reasons=("1 day(s) have fewer than 50 segments: 2026-11-05",),
+    )
+    context = SimpleNamespace(topic_timeline=timeline, actor_timeline=None)
+
+    html = _timeline_section(context)  # type: ignore[arg-type]
+
+    assert "Topic share by day" in html
+    assert "No trend is claimed" in html
+    assert "not reportable" in html
+    assert "2026-11-05" in html
+    assert "20.0%" in html and "40.0%" in html
+
+
+def test_no_timeline_means_no_section() -> None:
+    """A report assembled without the series simply omits the section rather than showing an empty table."""
+    from types import SimpleNamespace
+
+    from gtaf.presentation.report_html import _timeline_section
+
+    assert _timeline_section(SimpleNamespace(topic_timeline=None, actor_timeline=None)) == ""  # type: ignore[arg-type]
+
+
 def test_build_report_computes_the_slice(populated_db: Path) -> None:
     """FR-2: filters restrict the figures, and the outlier rate comes from the data."""
     from gtaf.infrastructure.db import connect

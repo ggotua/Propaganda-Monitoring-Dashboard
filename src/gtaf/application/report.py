@@ -11,6 +11,7 @@ from datetime import date, datetime
 
 from gtaf.application import queries
 from gtaf.application.actors import ActorStat
+from gtaf.application.timeline import TimelineResult
 from gtaf.domain.topics import OUTLIER_TOPIC_ID
 
 
@@ -33,6 +34,8 @@ class ReportContext:
         actors: Actor mention counts for the slice, largest first; empty when the dictionary was not
             supplied.
         actor_segments: Segments mentioning at least one known actor, the denominator's pair.
+        topic_timeline: Per-day topic shares, when supplied.
+        actor_timeline: Per-day actor mention shares, when supplied.
     """
 
     title: str
@@ -48,6 +51,8 @@ class ReportContext:
     topic_versions: tuple[str, ...]
     actors: tuple[ActorStat, ...] = ()
     actor_segments: int = 0
+    topic_timeline: TimelineResult | None = None
+    actor_timeline: TimelineResult | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -63,6 +68,8 @@ def build_report(
     until: date | None = None,
     now: datetime | None = None,
     actor_scan: object | None = None,
+    topic_timeline: TimelineResult | None = None,
+    actor_timeline: TimelineResult | None = None,
 ) -> ReportContext:
     """Assemble a report for a slice.
 
@@ -114,4 +121,6 @@ def build_report(
         topic_versions=queries.topic_method_versions(conn),
         actors=actor_stats,
         actor_segments=actor_segments,
+        topic_timeline=topic_timeline,
+        actor_timeline=actor_timeline,
     )

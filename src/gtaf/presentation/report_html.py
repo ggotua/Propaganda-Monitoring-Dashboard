@@ -192,6 +192,59 @@ def _actor_section(context: ReportContext) -> str:
     )
 
 
+def _timeline_section(context: ReportContext) -> str:
+    """Render the daily series for topics and actors.
+
+    Args:
+        context: Report context.
+
+    Returns:
+        An HTML section, or a note when no timeline was supplied.
+
+    Notes:
+        The table is deliberately a table: a line chart from ten points on one channel would imply a trend,
+        which G-4 forbids. The caption carries three facts a reader needs before reading any number — that
+        cells are shares of that day, that a thin day voids the description, and that no trend is claimed.
+    """
+    blocks: list[str] = []
+    for label, result in (
+        ("Topic share by day", context.topic_timeline),
+        ("Actor mentions by day", context.actor_timeline),
+    ):
+        if result is None or not result.series:
+            continue
+        header = "".join(f"<th>{escape(cell.date[-5:])}</th>" for cell in result.series[0].days)
+        body = "".join(
+            "<tr>"
+            + f"<td>{escape(series.key)}</td>"
+            + "".join(f"<td>{cell.share:.1%}</td>" for cell in series.days)
+            + "</tr>"
+            for series in result.series
+        )
+        caveat = (
+            f"{len(result.dates)} days, {sum(result.daily_totals.values()):,} segments. "
+            + (
+                "Series is <strong>not reportable</strong>: "
+                + "; ".join(escape(reason) for reason in result.reasons)
+                + ". "
+                if not result.reportable
+                else ""
+            )
+            + "Cells are shares of that day's segments, so a busier day does not look like a spike. "
+            "No trend is claimed: a trend needs three complete reporting windows (G-4), and this corpus "
+            "covers one period on one channel."
+        )
+        blocks.append(
+            f"<h2>{escape(label)}</h2>"
+            f'<div class="muted">{caveat}</div>'
+            f"<table><thead><tr><th>key</th>{header}</tr></thead><tbody>{body}</tbody></table>"
+        )
+
+    if not blocks:
+        return ""
+    return "".join(blocks)
+
+
 def render_html(context: ReportContext) -> str:
     """Render the full self-contained report.
 
@@ -242,6 +295,7 @@ def render_html(context: ReportContext) -> str:
             + rows
             + "</tbody></table>"
             + _actor_section(context)
+            + _timeline_section(context)
         )
 
     methodology = f"""

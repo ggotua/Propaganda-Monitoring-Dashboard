@@ -104,6 +104,12 @@ The first actor run showed **nine days instead of ten**: dates were derived from
 which no known actor was mentioned disappeared from the series — precisely the failure `pivot`'s own
 docstring warns about. Fixed by passing the full date list from the daily totals; a test pins it.
 
+### Next
+
+The series are rendered in the report as two tables ("Topic share by day", "Actor mentions by day") with the
+reportability note and the no-trend statement in the caption. No chart: a line from ten points would imply a
+direction the corpus cannot support.
+
 ### What the first run suggests, and why it is not a finding
 
 The unclassified share is stable at 33–42 % across all ten days, which is evidence that the 38 % figure is
