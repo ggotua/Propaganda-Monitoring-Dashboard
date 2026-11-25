@@ -53,7 +53,7 @@ from gtaf.application.text import sentences_for_video
 from gtaf.application.timeline import actor_timeline, topic_timeline
 from gtaf.application.topic_labels import label_topics
 from gtaf.application.topics import InsufficientDataError, run_topics
-from gtaf.application.validation import validate_stance
+from gtaf.application.validation import cumulative_agreement, validate_stance
 from gtaf.domain.actors import Actor
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 from gtaf.domain.llm import (
@@ -301,8 +301,13 @@ def _build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--target", required=True)
     validate.add_argument("--primary", default="deepseek", help="provider that produced the labels")
     validate.add_argument("--validator", default="gemini", help="provider that checks them")
-    validate.add_argument("--limit", type=int, default=50)
+    validate.add_argument("--limit", type=int, default=10)
     validate.add_argument("--budget", type=float, default=None)
+    validate.add_argument(
+        "--status",
+        action="store_true",
+        help="print cumulative agreement from stored results without calling any vendor",
+    )
 
     return parser
 
@@ -1394,6 +1399,26 @@ def _cmd_timeline(
     return EXIT_OK
 
 
+def _print_agreement(agreement: object, label: str) -> None:
+    """Print an agreement block.
+
+    Args:
+        agreement: A :class:`~gtaf.domain.validation.Agreement`.
+        label: Heading for the block.
+    """
+    n = getattr(agreement, "n", 0)
+    if not n:
+        print(f"{label}: nothing compared yet")
+        return
+    agree = getattr(agreement, "agree", 0)
+    rate = getattr(agreement, "rate", 0.0)
+    kappa = getattr(agreement, "kappa", 0.0)
+    print(f"\n{label}: {agree}/{n} = {rate:.1%} | Cohen's kappa = {kappa:.3f}")
+    print(f"\n{'class':11} {'agree':>6} {'total':>6} {'rate':>7}")
+    for class_label, class_agree, class_total in getattr(agreement, "per_class", ()):
+        print(f"{class_label:11} {class_agree:>6} {class_total:>6} {class_agree / class_total:>6.1%}")
+
+
 def _cmd_validate(
     *,
     db_path: Path,
@@ -1404,6 +1429,7 @@ def _cmd_validate(
     validator: str,
     limit: int,
     budget: float | None,
+    status_only: bool = False,
 ) -> int:
     """Validate stored stance labels with a second vendor (SPEC-016).
 
@@ -1414,8 +1440,9 @@ def _cmd_validate(
         target: Actor whose labels are checked.
         primary: Provider that produced the labels.
         validator: Provider that checks them; must be a different vendor.
-        limit: Maximum items to check.
+        limit: Maximum items to check in this pass.
         budget: Monthly cap in USD, or None.
+        status_only: Print the cumulative result without calling any vendor.
 
     Returns:
         Process exit code.
@@ -1426,6 +1453,20 @@ def _cmd_validate(
     except KeyError as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_CONFIG
+
+    validator_model = PROVIDER_CHAINS[validator][0].model
+
+    if status_only:
+        conn = open_database(db_path, read_only=True)
+        try:
+            repo = DuckDBRepository(conn)
+            cumulative = cumulative_agreement(
+                repo, target=actor.actor_id, validator_model=validator_model
+            )
+        finally:
+            conn.close()
+        _print_agreement(cumulative, f"{actor.en} cumulative ({validator_model})")
+        return EXIT_OK
 
     conn = connect(db_path, read_only=False)
     try:
@@ -1573,6 +1614,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 validator=args.validator,
                 limit=args.limit,
                 budget=args.budget,
+                status_only=args.status,
             )
         if args.command == "timeline":
             return _cmd_timeline(

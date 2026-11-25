@@ -141,6 +141,14 @@ class FakeStore:
         self.validation.extend(rows)
         return len(rows)
 
+    def validated_segments(self, validator_model: str) -> set[str]:
+        """Nothing validated yet in these tests."""
+        return set()
+
+    def validation_labels(self, validator_model: str) -> dict[str, str]:
+        """Return what has been stored."""
+        return {row[0]: row[1] for row in self.validation}
+
 
 def test_validator_rejects_the_same_vendor() -> None:
     """D-010 enforced before any call: two models from one vendor are not independent evidence."""

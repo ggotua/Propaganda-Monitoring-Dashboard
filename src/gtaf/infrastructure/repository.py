@@ -636,8 +636,7 @@ class DuckDBRepository:
         """Write validation results.
 
         Args:
-            rows: ``(segment_id, validator_model, agreement)``; the second element is ignored in favour of
-                ``validator_model`` so a caller cannot store a mismatched model name.
+            rows: ``(segment_id, validator_label, agreement)``.
             validator_model: Model that produced the verdicts.
 
         Returns:
@@ -647,26 +646,51 @@ class DuckDBRepository:
             return 0
         self._conn.execute("BEGIN TRANSACTION")
         try:
-            for segment_id, _ignored, agreement in rows:
+            for segment_id, validator_label, agreement in rows:
                 self._conn.execute(
                     "DELETE FROM validation WHERE segment_id = ? AND validator_model = ?",
                     [segment_id, validator_model],
                 )
                 self._conn.execute(
-                    "INSERT INTO validation (run_id, segment_id, validator_model, agreement) "
-                    "VALUES (?, ?, ?, ?)",
-                    [
-                        None,
-                        segment_id,
-                        validator_model,
-                        agreement,
-                    ],
+                    "INSERT INTO validation (run_id, segment_id, validator_model, agreement, "
+                    "validator_label) VALUES (?, ?, ?, ?, ?)",
+                    [None, segment_id, validator_model, agreement, validator_label],
                 )
             self._conn.execute("COMMIT")
         except Exception:
             self._conn.execute("ROLLBACK")
             raise
         return len(rows)
+
+    def validated_segments(self, validator_model: str) -> set[str]:
+        """Return segment ids already validated by a model.
+
+        Args:
+            validator_model: Model name.
+
+        Returns:
+            Segment ids, so a later run can skip them and accumulate instead of repeating.
+        """
+        rows = self._conn.execute(
+            "SELECT segment_id FROM validation WHERE validator_model = ?", [validator_model]
+        ).fetchall()
+        return {str(row[0]) for row in rows}
+
+    def validation_labels(self, validator_model: str) -> dict[str, str]:
+        """Return the validator's label per segment, for cumulative statistics.
+
+        Args:
+            validator_model: Model name.
+
+        Returns:
+            Mapping of segment id to validator label, skipping rows stored before labels were kept.
+        """
+        rows = self._conn.execute(
+            "SELECT segment_id, validator_label FROM validation "
+            "WHERE validator_model = ? AND validator_label IS NOT NULL",
+            [validator_model],
+        ).fetchall()
+        return {str(row[0]): str(row[1]) for row in rows}
 
     def latest_topics_run(self) -> str | None:
         """Return the newest run that produced topics.

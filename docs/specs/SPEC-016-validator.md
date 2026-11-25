@@ -125,3 +125,37 @@ smoke test, not a measurement, and the CLI now exits with the blocked code and s
 Run a 50-item validation across several days, or on a paid tier, and compare it with the human G-8 result.
 Agreement between **models** and agreement between **a model and a human** measure different things; only the
 second closes a gate, and this spec exists to make the first cheap.
+
+### Accumulation (added 2026-11-25)
+
+The free tier gives about eleven calls a day, so a 50-item check cannot happen in one run. Two changes make
+it a multi-day accumulation rather than a repeated attempt:
+
+1. **Skip what is already validated.** `validated_segments(validator_model)` filters the candidates, so each
+   run adds the next batch. Before this, every run re-checked the same first items and the total never grew.
+2. **Store the validator's label** (migration 007, `validation.validator_label`). The earlier table kept only
+   a 0/1 flag, which cannot produce kappa or per-class rates. Now the statistic is recomputed from
+   **everything** checked so far, so a good day cannot hide a bad one.
+
+```
+gtaf validate --target saakashvili --limit 10    # one daily batch, skips the already-checked
+gtaf validate --target saakashvili --status      # cumulative agreement, no calls
+```
+
+`scripts/run_daily_validation.ps1` wraps the batch and exits 0 on quota (a blocked day adds nothing; it is not
+a failure). It is **not registered** as a scheduled task — that stays the user's decision, like the
+collection task.
+
+### A fourth defect: thinking tokens truncate the reply even at 2048
+
+After raising the cap to 2048, replies were **still** truncated: Gemini's reasoning tokens come out of the same
+budget, and a 2,000-character Georgian prompt can spend nearly all of it on thinking. The fix is not a bigger
+cap but `thinkingConfig: {thinkingBudget: 0}` — this task needs a label and a verbatim quote, not reasoning.
+Measured after the change: **1 compared, 0 unparsable**, where the same call had been unparsable minutes
+earlier. Eleven stale truncated replies were purged from the cache again.
+
+### What has actually been validated
+
+One item. `0/1 = 0.0 %, kappa 0.000` is a smoke test that the mechanism runs end to end, not a measurement of
+anything — and the report says so. The Gemini free tier was exhausted by the day's diagnostics, so the batch
+stopped after one call.

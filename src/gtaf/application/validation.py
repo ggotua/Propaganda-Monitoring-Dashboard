@@ -34,7 +34,15 @@ class ValidationStore(Protocol):
         ...
 
     def store_validation(self, rows: Sequence[tuple[str, str, float]], *, validator_model: str) -> int:
-        """Write ``(segment_id, validator_model, agreement)`` rows."""
+        """Write ``(segment_id, validator_label, agreement)`` rows."""
+        ...
+
+    def validated_segments(self, validator_model: str) -> set[str]:
+        """Return segment ids already validated by this model."""
+        ...
+
+    def validation_labels(self, validator_model: str) -> dict[str, str]:
+        """Return the validator's label per segment."""
         ...
 
 
@@ -59,6 +67,29 @@ class ValidationResult:
     agreement: Agreement
     unparsable: int
     cost_usd: float
+
+
+def cumulative_agreement(
+    store: ValidationStore, *, target: str, validator_model: str
+) -> Agreement:
+    """Recompute agreement over everything validated so far.
+
+    Args:
+        store: Persistence holding the validator's labels.
+        target: Actor whose primary labels are compared.
+        validator_model: Model that produced the stored verdicts.
+
+    Returns:
+        Agreement over all stored pairs.
+
+    Notes:
+        The free tier allows about eleven calls a day, so a 50-item check is assembled from several runs.
+        Recomputing from storage — rather than from the last batch — is what makes that accumulation
+        honest: a good first day and a bad second are averaged, not cherry-picked.
+    """
+    primary = store.stance_labels(target, prompt_version=PROMPT_VERSION)
+    validated = store.validation_labels(validator_model)
+    return compare(primary, validated)
 
 
 def validate_stance(
@@ -98,11 +129,15 @@ def validate_stance(
     segments = dict(
         (segment_id, text) for segment_id, text in reader.list_segments(method)  # type: ignore[attr-defined]
     )
+    already = store.validated_segments(validator_spec.model)
 
     validator_labels: dict[str, str] = {}
     unparsable = 0
     cost = 0.0
-    for segment_id in sorted(primary)[:limit]:
+    # Skip what earlier runs already checked, so a daily batch accumulates instead of repeating the same
+    # items. The Gemini free tier allows about eleven calls a day, so a 50-item check needs several runs.
+    candidates = [item for item in sorted(primary) if item not in already]
+    for segment_id in candidates[:limit]:
         text = segments.get(segment_id)
         if text is None:
             continue
@@ -122,7 +157,7 @@ def validate_stance(
     if validator_labels:
         store.store_validation(
             [
-                (item, validator_spec.model, 1.0 if primary[item] == label else 0.0)
+                (item, label, 1.0 if primary[item] == label else 0.0)
                 for item, label in validator_labels.items()
             ],
             validator_model=validator_spec.model,

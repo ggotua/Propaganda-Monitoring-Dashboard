@@ -156,7 +156,14 @@ class GeminiTransport:
         """Call one Gemini model."""
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.0, "maxOutputTokens": 2048},
+            "generationConfig": {
+                "temperature": 0.0,
+                "maxOutputTokens": 2048,
+                # Reasoning tokens are drawn from the same budget as the visible reply, and this task does
+                # not need them: a label plus a verbatim quote. Measured 2026-11-25, leaving thinking on
+                # truncated the JSON mid-object even at 2048 tokens, which read as a broken validator.
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
         }
         body = _post_json(
             f"{GEMINI_BASE}/{spec.model}:generateContent",
