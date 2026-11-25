@@ -20,12 +20,12 @@ DEFAULT_DAILY_BUDGET = 200
 # the remaining capacity, because the run stops rather than partially recording a channel.
 DEFAULT_BATCH_LIMIT = 120
 
-# Measured 2026-11-14: after the collection burst on 13 November, the caption endpoint kept
-# returning HTTP 429 for over 21 hours, including for a single video. The limit is therefore
-# multi-day, not hourly, and a daily retry just re-arms it. Backoff doubles per block, capped at
-# 72 hours.
-DEFAULT_BACKOFF_BASE_HOURS = 12
-MAX_BACKOFF_HOURS = 72
+# Measured 2026-11-25: the block persisted for 11 days on this IP, yet a single hand-made caption request
+# succeeded the moment we stopped poking — and the next collect run immediately 429ed again. That is the
+# signature of a limiter that is *re-armed by attempts*, not of a fixed cool-down: our own weekly retries
+# were keeping it alive. The cap is therefore a week, and one attempt is one request set, not a burst.
+DEFAULT_BACKOFF_BASE_HOURS = 24
+MAX_BACKOFF_HOURS = 168
 
 
 def block_history(conn: SqlConnection) -> tuple[datetime | None, int]:

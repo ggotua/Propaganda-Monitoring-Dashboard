@@ -59,6 +59,43 @@ def test_caption_payload_404_is_a_video_skip(monkeypatch) -> None:
         source._download_text("https://example/caption")
 
 
+def test_parse_rss_extracts_ids_and_titles() -> None:
+    """The RSS listing is the light path that avoids burning the caption quota."""
+    from gtaf.infrastructure.youtube import parse_rss
+
+    xml = """
+    <feed>
+      <entry><yt:videoId>abc123</yt:videoId><media:title>First &amp; best</media:title></entry>
+      <entry><yt:videoId>def456</yt:videoId><media:title>Second</media:title></entry>
+    </feed>
+    """
+    uploads = parse_rss(xml, 5)
+
+    assert [upload.video_id for upload in uploads] == ["abc123", "def456"]
+    assert uploads[0].title == "First & best"
+
+
+def test_parse_rss_honours_the_limit() -> None:
+    """A feed longer than the limit is truncated, newest first."""
+    from gtaf.infrastructure.youtube import parse_rss
+
+    xml = "".join(f"<yt:videoId>id{index}</yt:videoId>" for index in range(20))
+    uploads = parse_rss(xml, 3)
+
+    assert len(uploads) == 3
+    assert uploads[0].video_id == "id0"
+
+
+def test_parse_rss_without_titles_still_returns_ids() -> None:
+    """A feed entry without a title must not lose its id."""
+    from gtaf.infrastructure.youtube import parse_rss
+
+    uploads = parse_rss("<yt:videoId>onlyid</yt:videoId>", 5)
+
+    assert uploads[0].video_id == "onlyid"
+    assert uploads[0].title == ""
+
+
 def test_parse_json3_builds_contiguous_cues() -> None:
     """Blank events are dropped and indices recomputed, so INV-3 holds by construction."""
     payload = (

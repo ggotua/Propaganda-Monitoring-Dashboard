@@ -186,7 +186,7 @@ def test_stale_running_runs_are_counted(initialized_db: Path) -> None:
 
 
 def test_backoff_after_one_block(initialized_db: Path) -> None:
-    """A single 429 pauses for 12 hours rather than retrying the next day."""
+    """A single 429 pauses for 24 hours; the limiter is re-armed by attempts, not by time alone."""
     conn = connect(initialized_db)
     try:
         repo = DuckDBRepository(conn)
@@ -207,7 +207,7 @@ def test_backoff_after_one_block(initialized_db: Path) -> None:
 
     assert decision.collect is False
     assert "backing off after 1 blocked run" in decision.reason
-    assert "2026-11-14 15:00" in decision.reason
+    assert "2026-11-15 03:00" in decision.reason
 
 
 def test_backoff_doubles_and_caps(initialized_db: Path) -> None:
@@ -235,8 +235,8 @@ def test_backoff_doubles_and_caps(initialized_db: Path) -> None:
     assert consecutive == 4
     assert last_block is not None
     assert decision.collect is False
-    # 4 blocks -> 12 * 2^3 = 96 h, capped to 72 h after the newest block.
-    assert "2026-11-17 03:03" in decision.reason
+    # 4 blocks -> 24 * 2^3 = 192 h, capped at 168 h (one week) after the newest block.
+    assert "2026-11-21 03:03" in decision.reason
 
 
 def test_success_resets_the_backoff(initialized_db: Path) -> None:

@@ -1133,3 +1133,38 @@ trade-off is recorded here and in `G8-VALIDATION.md`, and the guard is a rule a 
 model's judgement. Revisit if: a reliable second signal (video description, programme metadata) can
 disambiguate without discarding segments.
 
+---
+
+## D-032: The caption block is re-armed by attempts; back off a week, and list via RSS
+
+Status: Accepted (2026-11-25). Measured on the day the backoff expired.
+
+Context: `gtaf next` released collection on 2026-11-25 after the 72-hour cap, and the attempt returned
+`429` again — eleven days after the original block. Probing found something more specific than "a long
+cool-down":
+
+- a **single hand-made caption request** for a Formula video returned `HTTP 200` and 105 KB of `json3`;
+- a **collect run** (listing, then the same video) returned `429` on its first caption fetch;
+- once the run had failed, even single requests 429ed for a while.
+
+So the limiter behaves like a **budget that every attempt re-arms**, and our own retry schedule was the thing
+keeping it closed: a daily task that tries 120 videos is not waiting out a block, it is renewing it.
+
+Decision:
+1. **Backoff base 24 h, cap one week** (168 h), replacing 12 h/72 h. A run that fails must not come back the
+   next day to fail again.
+2. **Listing prefers the channel RSS feed** (`feeds/videos.xml`), which carries the newest ~15 uploads and
+   costs no caption quota; yt-dlp's listing is used only when more than 15 are requested.
+3. **One attempt is one small request set.** The scheduler's job is to probe gently, not to drain the budget.
+
+Rejected:
+- **Retry daily until it works** — measured to be the cause of the eleven-day block.
+- **Drop the scheduled task entirely** — loses the chance to collect the moment the block lifts.
+- **Rotate IPs or add cookies to dodge the limit** — D-015 declined evasion for age gates for the same
+  reason: a pipeline that depends on evading a limiter breaks silently later.
+
+Consequences: collection may now stay idle for a week at a time, so the opposition channels that the G-8
+review needs (Formula, TV Pirveli — already configured, zero videos) may not arrive this month. The RSS path
+is still a real improvement: it removes the heaviest request from every run and is tested. Revisit if: a
+measured window shows the limiter is time-based after all, or a paid/authenticated route becomes available.
+

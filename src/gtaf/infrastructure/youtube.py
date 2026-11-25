@@ -8,6 +8,7 @@ into "skip this video" versus "stop the run".
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.request
 from collections.abc import Sequence
@@ -79,6 +80,109 @@ def parse_json3(payload: str) -> tuple[CaptionCue, ...]:
     return tuple(cues)
 
 
+CHANNEL_ID_RE = re.compile(r'"channelId":"(UC[A-Za-z0-9_-]{22})"')
+RSS_VIDEO_RE = re.compile(r"<yt:videoId>([^<]+)</yt:videoId>")
+RSS_TITLE_RE = re.compile(r"<media:title>([^<]*)</media:title>")
+
+# The feed carries at most 15 entries; beyond that the metadata listing is required.
+RSS_MAX_ENTRIES = 15
+
+
+def parse_rss(xml: str, limit: int) -> tuple[UploadRef, ...]:
+    """Extract uploads from a channel RSS feed.
+
+    Args:
+        xml: Feed body.
+        limit: Maximum entries to return.
+
+    Returns:
+        Uploads in feed order (newest first).
+
+    Notes:
+        RSS is used because the ordinary listing is what burns the caption quota. Measured 2026-11-25: a
+        single yt-dlp channel listing made every following caption request return HTTP 429, while the same
+        videos fetched fine on their own. The feed is a plain XML endpoint with no API quota, and it avoids
+        the browse request that appears to trip the limiter.
+    """
+    video_ids = RSS_VIDEO_RE.findall(xml)
+    titles = RSS_TITLE_RE.findall(xml)
+    uploads: list[UploadRef] = []
+    for index, video_id in enumerate(video_ids[:limit]):
+        title = html_unescape(titles[index]) if index < len(titles) else ""
+        uploads.append(UploadRef(video_id=video_id, title=title))
+    return tuple(uploads)
+
+
+def resolve_channel_id(handle: str, *, timeout: int = 30) -> str:
+    """Resolve a handle to a channel id by reading the channel page.
+
+    Args:
+        handle: ``@name`` handle.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        The ``UC…`` channel id.
+
+    Raises:
+        VideoUnavailableError: When the page does not contain a channel id.
+    """
+    cleaned = handle if handle.startswith("@") else f"@{handle}"
+    request = urllib.request.Request(
+        f"https://www.youtube.com/{cleaned}",
+        headers={"User-Agent": "Mozilla/5.0", "Accept-Language": "en"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        page = response.read().decode("utf-8", errors="replace")
+    match = CHANNEL_ID_RE.search(page)
+    if not match:
+        raise VideoUnavailableError(f"no channel id found on the page for {cleaned}")
+    return match.group(1)
+
+
+def list_uploads_rss(handle: str, limit: int, *, timeout: int = 30) -> tuple[UploadRef, ...]:
+    """List a channel's newest uploads from its RSS feed.
+
+    Args:
+        handle: ``@name`` handle.
+        limit: Maximum entries.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Uploads, newest first.
+
+    Raises:
+        VideoUnavailableError: When the feed cannot be read.
+    """
+    channel_id = resolve_channel_id(handle, timeout=timeout)
+    request = urllib.request.Request(
+        f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}",
+        headers={"User-Agent": "Mozilla/5.0"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        xml = response.read().decode("utf-8", errors="replace")
+    return parse_rss(xml, limit)
+
+
+def html_unescape(text: str) -> str:
+    """Decode the few XML entities a feed title may contain.
+
+    Args:
+        text: Raw text.
+
+    Returns:
+        Decoded text.
+    """
+    for entity, character in (
+        ("&amp;", "&"),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+        ("&quot;", '"'),
+        ("&#39;", "'"),
+    ):
+        text = text.replace(entity, character)
+    return text
+
+
 class YtDlpSource:
     """Video source backed by yt-dlp."""
 
@@ -122,6 +226,34 @@ class YtDlpSource:
         return yt_dlp.YoutubeDL(options)
 
     def list_uploads(self, handle: str, limit: int) -> Sequence[UploadRef]:
+        """List a channel's uploads, preferring the RSS feed.
+
+        Args:
+            handle: ``@name`` handle.
+            limit: Maximum uploads to return.
+
+        Returns:
+            Uploads, newest first.
+
+        Notes:
+            The RSS feed is tried first because the ordinary listing is what burns the caption quota:
+            measured 2026-11-25, one yt-dlp channel listing made every following caption request return
+            HTTP 429, while the same videos fetched fine on their own. The feed is a light XML request with
+            no API quota.
+
+            The feed carries only the newest ~15 entries, so a larger ``limit`` falls back to yt-dlp's
+            listing; that path is the expensive one and is used only for a deliberate backfill.
+        """
+        if limit <= RSS_MAX_ENTRIES:
+            try:
+                uploads = list_uploads_rss(handle, limit)
+                if uploads:
+                    return uploads
+            except Exception:  # noqa: BLE001 - fall back to the metadata API
+                pass
+        return self._list_uploads_ytdlp(handle, limit)
+
+    def _list_uploads_ytdlp(self, handle: str, limit: int) -> Sequence[UploadRef]:
         """List a channel's recent uploads, newest first.
 
         Args:
