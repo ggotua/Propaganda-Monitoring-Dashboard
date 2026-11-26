@@ -13,6 +13,7 @@ import time
 import urllib.request
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from gtaf.application.collect import (
@@ -183,11 +184,46 @@ def html_unescape(text: str) -> str:
     return text
 
 
+def load_netscape_cookies(path: Path) -> str:
+    """Build a Cookie header from a Netscape-format cookies file.
+
+    Args:
+        path: Path to ``cookies.txt``.
+
+    Returns:
+        ``name=value; name=value`` for cookies whose domain mentions youtube, or an empty string.
+
+    Notes:
+        The caption fetch is a plain HTTP request, so it does not share yt-dlp's cookie jar; without the
+        header the request stays anonymous while the metadata call is authenticated. That mismatch is the
+        kind of half-fix that looks like it should work and does not.
+    """
+    if not path.exists():
+        return ""
+    pairs: list[str] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 7:
+            continue
+        domain, _flag, _path, _secure, _expiry, name, value = parts[:7]
+        if "youtube" not in domain or not name:
+            continue
+        pairs.append(f"{name}={value}")
+    return "; ".join(pairs)
+
+
 class YtDlpSource:
     """Video source backed by yt-dlp."""
 
     def __init__(
-        self, *, throttle: float = 2.0, quiet: bool = True, proxy: str | None = None
+        self,
+        *,
+        throttle: float = 2.0,
+        quiet: bool = True,
+        proxy: str | None = None,
+        cookies: Path | None = None,
     ) -> None:
         """Initialise the source.
 
@@ -198,10 +234,14 @@ class YtDlpSource:
             proxy: Optional HTTP(S) proxy URL. Measured 2026-11-26: YouTube answers transcript requests from
                 this host with `IpBlocked` in two independent clients, so the only working lever is a
                 different egress IP — a proxy, a VPN, or another network.
+            cookies: Optional Netscape ``cookies.txt`` from a signed-in browser. This changes the session
+                from "anonymous client" to "a person's browser", which is the one remaining local lever.
         """
         self._throttle = throttle
         self._quiet = quiet
         self._proxy = proxy
+        self._cookies = cookies
+        self._cookie_header = load_netscape_cookies(cookies) if cookies else ""
 
     def _ydl(self, *, flat_limit: int | None = None) -> Any:
         """Build a YoutubeDL instance.
@@ -231,6 +271,8 @@ class YtDlpSource:
             options["playlistend"] = flat_limit
         if self._proxy:
             options["proxy"] = self._proxy
+        if self._cookies:
+            options["cookiefile"] = str(self._cookies)
         return yt_dlp.YoutubeDL(options)
 
     def list_uploads(self, handle: str, limit: int) -> Sequence[UploadRef]:
@@ -375,13 +417,16 @@ class YtDlpSource:
                 stored with captions it does not have.
         """
         try:
+            headers = {"Cookie": self._cookie_header} if self._cookie_header else {}
             if self._proxy:
                 opener = urllib.request.build_opener(
                     urllib.request.ProxyHandler({"http": self._proxy, "https": self._proxy})
                 )
-                with opener.open(url, timeout=30) as response:
+                request = urllib.request.Request(url, headers=headers)
+                with opener.open(request, timeout=30) as response:
                     return str(response.read().decode("utf-8", errors="replace"))
-            with urllib.request.urlopen(url, timeout=30) as response:
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request, timeout=30) as response:
                 return str(response.read().decode("utf-8", errors="replace"))
         except Exception as exc:
             message = f"caption payload unavailable: {exc}"

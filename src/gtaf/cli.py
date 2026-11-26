@@ -162,7 +162,13 @@ def _build_parser() -> argparse.ArgumentParser:
     collect.add_argument(
         "--proxy",
         default=None,
-        help="HTTP(S) proxy URL; the only lever that works once YouTube blocks this IP (D-032)",
+        help="HTTP(S) proxy URL; the only lever that works once YouTube blocks this IP (D-033)",
+    )
+    collect.add_argument(
+        "--cookies",
+        type=Path,
+        default=None,
+        help="Netscape cookies.txt from a signed-in browser; makes the session look like a person's",
     )
     collect.add_argument(
         "--skip-existing",
@@ -323,6 +329,9 @@ def _build_parser() -> argparse.ArgumentParser:
     probe.add_argument("--config-dir", type=Path, default=Path("config"))
     probe.add_argument("--channel", default="formula")
     probe.add_argument("--proxy", default=None, help="HTTP(S) proxy URL")
+    probe.add_argument(
+        "--cookies", type=Path, default=None, help="Netscape cookies.txt from a signed-in browser"
+    )
 
     return parser
 
@@ -485,6 +494,7 @@ def _cmd_collect(
     throttle: float,
     skip_existing: bool = False,
     proxy: str | None = None,
+    cookies: Path | None = None,
 ) -> int:
     """Collect in-window videos and captions, then print a coverage report (FR-10, §3.7).
 
@@ -530,7 +540,7 @@ def _cmd_collect(
             channels,
             programmes_by_channel,
             plan,
-            source=YtDlpSource(throttle=throttle, proxy=proxy),
+            source=YtDlpSource(throttle=throttle, proxy=proxy, cookies=cookies),
             repo=DuckDBRepository(conn),
             raw_store=FileRawStore(raw_dir),
             logger=logger,
@@ -1553,7 +1563,9 @@ def _cmd_validate(
     return EXIT_OK
 
 
-def _cmd_probe(*, config_dir: Path, channel: str, proxy: str | None) -> int:
+def _cmd_probe(
+    *, config_dir: Path, channel: str, proxy: str | None, cookies: Path | None = None
+) -> int:
     """Make one caption request to test whether the IP is still blocked (D-032).
 
     Args:
@@ -1576,7 +1588,7 @@ def _cmd_probe(*, config_dir: Path, channel: str, proxy: str | None) -> int:
         print(f"channel {channel!r} is not configured with a handle", file=sys.stderr)
         return EXIT_CONFIG
 
-    source = YtDlpSource(throttle=0.0, proxy=proxy)
+    source = YtDlpSource(throttle=0.0, proxy=proxy, cookies=cookies)
     try:
         uploads = list_uploads_rss(configured.youtube_handle, 3)
     except Exception as exc:  # noqa: BLE001 - a probe reports, it does not crash
@@ -1685,7 +1697,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_runs(db_path=args.db, limit=args.limit)
         if args.command == "probe":
             return _cmd_probe(
-                config_dir=args.config_dir, channel=args.channel, proxy=args.proxy
+                config_dir=args.config_dir,
+                channel=args.channel,
+                proxy=args.proxy,
+                cookies=args.cookies,
             )
         if args.command == "validate":
             return _cmd_validate(
@@ -1769,6 +1784,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 throttle=args.throttle,
                 skip_existing=args.skip_existing,
                 proxy=args.proxy,
+                cookies=args.cookies,
             )
     except ConfigError as exc:
         for violation in exc.violations:

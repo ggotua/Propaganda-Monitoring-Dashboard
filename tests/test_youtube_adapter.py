@@ -71,6 +71,47 @@ def test_proxy_is_passed_to_ytdlp() -> None:
     assert not without.params.get("proxy")
 
 
+def test_netscape_cookies_become_a_cookie_header(tmp_path) -> None:
+    """The caption fetch does not share yt-dlp's jar, so the header is built by hand.
+
+    Without it the metadata call is authenticated and the caption call stays anonymous — a half-fix that
+    looks like it should work.
+    """
+    from gtaf.infrastructure.youtube import load_netscape_cookies
+
+    cookies = tmp_path / "cookies.txt"
+    cookies.write_text(
+        "# Netscape HTTP Cookie File\n"
+        ".youtube.com\tTRUE\t/\tTRUE\t0\tSID\tabc123\n"
+        ".youtube.com\tTRUE\t/\tTRUE\t0\tHSID\tdef456\n"
+        ".example.com\tTRUE\t/\tFALSE\t0\tOTHER\tskip\n",
+        encoding="utf-8",
+    )
+
+    header = load_netscape_cookies(cookies)
+
+    assert header == "SID=abc123; HSID=def456"
+
+
+def test_missing_cookie_file_yields_no_header(tmp_path) -> None:
+    """A missing file must not fail the run; it simply means an anonymous session."""
+    from gtaf.infrastructure.youtube import load_netscape_cookies
+
+    assert load_netscape_cookies(tmp_path / "absent.txt") == ""
+
+
+def test_cookies_path_reaches_ytdlp(tmp_path) -> None:
+    """The cookie file is handed to yt-dlp as well, not only to our caption fetch."""
+    from gtaf.infrastructure.youtube import YtDlpSource
+
+    cookies = tmp_path / "cookies.txt"
+    cookies.write_text("# empty\n", encoding="utf-8")
+
+    ydl = YtDlpSource(quiet=True, cookies=cookies)._ydl()
+
+    assert ydl.params.get("cookiefile") == str(cookies)
+
+
 def test_parse_rss_extracts_ids_and_titles() -> None:
     """The RSS listing is the light path that avoids burning the caption quota."""
     from gtaf.infrastructure.youtube import parse_rss
