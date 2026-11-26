@@ -9,8 +9,8 @@
 # Why a separate small task: the Gemini free tier allows roughly eleven calls a day, so a 50-item check is
 # assembled over several days. Each run adds at most --limit new items and skips what is already validated.
 #
-# Exit codes: 0 on success, 0 on quota (a blocked day is not a failure — it simply adds nothing), and the
-# vendor's code otherwise.
+# Exit codes: 0 on success, 0 on quota (a blocked day is not a failure — it simply adds nothing), 0 when the
+# database is locked by the 02:30 collection run (D-014), and the vendor's code otherwise.
 
 param(
     [string]$Database = 'data/gtaf.duckdb',
@@ -42,5 +42,6 @@ if ($DryRun) {
 switch ($LASTEXITCODE) {
     0 { Write-Host 'validation batch finished' ; exit 0 }
     5 { Write-Host 'validator vendor quota exhausted; nothing added today (D-026)' ; exit 0 }
+    4 { Write-Host 'database locked by the collection run; skipping today (D-014)' ; exit 0 }
     default { Write-Host "validation failed with exit $LASTEXITCODE" ; exit $LASTEXITCODE }
 }

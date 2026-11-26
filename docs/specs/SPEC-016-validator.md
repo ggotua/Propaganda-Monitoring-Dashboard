@@ -154,8 +154,27 @@ cap but `thinkingConfig: {thinkingBudget: 0}` — this task needs a label and a 
 Measured after the change: **1 compared, 0 unparsable**, where the same call had been unparsable minutes
 earlier. Eleven stale truncated replies were purged from the cache again.
 
-### What has actually been validated
+### First real accumulation (2026-11-26, task run)
 
-One item. `0/1 = 0.0 %, kappa 0.000` is a smoke test that the mechanism runs end to end, not a measurement of
-anything — and the report says so. The Gemini free tier was exhausted by the day's diagnostics, so the batch
-stopped after one call.
+The registered task ran and added ten items in one pass:
+
+```
+gtaf validate --target saakashvili --status
+Saakashvili cumulative (gemini-3-flash-preview): 8/11 = 72.7 % | kappa 0.535
+critical  4/5 (80.0 %)
+unclear   4/6 (66.7 %)
+```
+
+Two things follow.
+
+**The mechanism works.** One scheduled run took the total from 1 to 11 without repeating anything, and the
+cumulative figure came from storage rather than from that run alone.
+
+**Cross-vendor agreement is lower than human agreement.** The reviewer agreed with DeepSeek on **84 %** of
+50 rows overall (91 % on `critical`); Gemini agrees with DeepSeek on **72.7 %** of 11, with kappa 0.535 —
+"moderate" at best. The gap is concentrated exactly where the reviewer complained: `unclear` (66.7 %).
+That is the same boundary he called arbitrary, now showing up as vendor disagreement. Two models agreeing
+poorly on `unclear` is evidence that the **label definition** is weak, not that one model is wrong.
+
+Sample size is 11: this is a direction, not a result. The task adds ~10 a day, so the 50-item comparison
+against the human check arrives in about four more days.
