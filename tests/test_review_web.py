@@ -127,6 +127,20 @@ def test_invalid_label_is_rejected(tmp_path: Path) -> None:
         read_labels(path)
 
 
+def test_reviewed_ids_collects_ids_from_earlier_sheets(tmp_path: Path) -> None:
+    """Measured 2026-11-26: v4 scored 87 % on the same sheet it was tuned against, so a held-out draw must be
+    able to exclude every publication an earlier sheet contained."""
+    from gtaf.application.review_web import reviewed_ids
+
+    sample = build_sample(_rows(), {}, target="t", size=4, seed=11)
+    path = tmp_path / "g8-web-review.csv"
+    write_sample(sample, path)
+
+    ids = reviewed_ids([path, tmp_path / "missing.csv"])
+
+    assert ids == {row.publication_id for row in sample}
+
+
 def test_score_reports_kappa_per_target_and_the_floor() -> None:
     """A mixed sheet answered two questions; averaging them would hide which one failed.
 

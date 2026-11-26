@@ -1504,3 +1504,52 @@ column and v4 labels). If that review reaches 0.80 overall with `critical` recal
 corpus earns its first G-8 pass. Revisit if: the re-review scores `critical` poorly again, which would say the
 problem is the model's reading of implicature, not the prompt's wording.
 
+---
+
+## D-039: v4 scores 26/30 on the sheet it was tuned on — conditional pass, not a gate
+
+Status: Accepted (2026-11-26). Third review, same 30 publications, human labels unchanged from the previous run.
+
+Context: the reviewer kept their labels and re-scored v4 against them: **26/30 = 87 %** (27/30 if a borderline
+row is counted). Ivanishvili 11/12, Kobakhidze 15/18. `critical` recall rose from 4 of 11 to **10 of 11**, and
+every case the reviewer had named — Goszewska, Khukhashvili, the baobabs, the Ponichala promise, the
+Kharazishvili honour, the "joked" headline — is now labelled `critical`. `neutral` stayed clean, so the fix
+introduced no false positives. Zarkua's defence became the one `supportive` hit.
+
+That is above the 0.80 gate. It is **not** recorded as a pass, for the reviewer's own reason and it is decisive:
+**these are the same 30 publications that v2, v3 and v4 were all tuned against**, and v4's examples were drawn
+from them. 87 % measures the fitting.
+
+The four residual disagreements, all informative:
+
+| Row | Human | Model | Reading |
+|---|---|---|---|
+| #24 Minsk audience with "Kobakhidze's and Putin's representatives" | critical | neutral | the one real miss — criticism of a named action of his |
+| #14 Kartvelishvili defending the refusal of Western demands | supportive | neutral | support expressed as **defence** is still invisible; only praise is caught |
+| #12 "after years of war propaganda, Ivanishvili's team…" | unclear | critical | borderline; the model's call is defensible |
+| #23 Minsk press release | unclear | neutral | no practical difference — neither label carries a stance |
+
+Decision:
+1. **`review-web --exclude-reviewed`** drops every publication that appeared in an earlier
+   `g8-web-review*.csv`, so a held-out draw cannot reuse tuned material. The first such draw excluded 37
+   publications and produced `reports/g8-web-heldout.csv` (40 rows).
+2. **The web-corpus G-8 stays CONDITIONAL**: v4 passes on tuned material, and the held-out run decides.
+3. **`supportive` is declared unmeasurable on this corpus** until a source with commentary exists. Measured
+   over 8 targets and roughly 200 labelled publications, `supportive` totals **three** rows. The reason is
+   structural, not a prompt defect: Imedi has no opinion section (its categories are all news), TV Pirveli's
+   programme pages carry video and no prose, and our own v3 rule converts the most common praise genre —
+   reported self-praise — into `neutral` by design. A 40-row held-out draw therefore contains one supportive
+   row, which cannot support a per-class rate.
+
+Rejected:
+- **Record 87 % as the pass** — the sample was chosen, and the prompt was fitted, against it.
+- **Re-tune on the held-out sheet if it fails** — that would repeat the same error one level down; a failed
+  held-out run means the fix does not generalise, and the honest response is a new source or a different model.
+- **Force more `supportive` rows by sampling by label** — that biases the agreement figure toward the rare class,
+  which is the failure mode D-038's sampling rule exists to prevent.
+
+Consequences: the publication corpus is now at "87 % on tuned material, held-out pending", and its `supportive`
+class is documented as untestable rather than reported as zero. Revisit if: the held-out sheet scores at or
+above 0.80 with `critical` recall above half, which would let the conditional pass become a pass for the two
+classes the corpus can measure.
+

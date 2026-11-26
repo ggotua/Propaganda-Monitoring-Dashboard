@@ -45,6 +45,32 @@ class ReviewRow:
     target: str
 
 
+def reviewed_ids(paths: Sequence[Path]) -> set[str]:
+    """Return publication ids that appear in earlier review sheets.
+
+    Args:
+        paths: Sheets written by :func:`write_sample`.
+
+    Returns:
+        Publication ids, so a held-out sample can never reuse material the prompt was tuned on.
+
+    Notes:
+        Measured 2026-11-26: prompt v4 scored 26/30 on the same 30 publications that v2, v3 and v4 were all tuned
+        against. That number measures the fitting, not the classifier — so the next gate run must draw from
+        publications no earlier sheet contained.
+    """
+    seen: set[str] = set()
+    for path in paths:
+        if not path.exists():
+            continue
+        with path.open(encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle):
+                publication_id = (row.get("publication_id") or "").strip()
+                if publication_id:
+                    seen.add(publication_id)
+    return seen
+
+
 def build_sample(
     rows: Sequence[tuple[str, str, str, str, str, float, str]],
     excerpts: dict[str, str],

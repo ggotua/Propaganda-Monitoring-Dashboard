@@ -48,7 +48,13 @@ from gtaf.application.methods import ACTIVE_SEG_METHOD
 from gtaf.application.networks import build_network
 from gtaf.application.report import build_report
 from gtaf.application.report_web import ConcordanceBlock, build_web_report
-from gtaf.application.review_web import build_sample, read_labels, score, write_sample
+from gtaf.application.review_web import (
+    build_sample,
+    read_labels,
+    reviewed_ids,
+    score,
+    write_sample,
+)
 from gtaf.application.schedule import (
     DEFAULT_BATCH_LIMIT,
     DEFAULT_DAILY_BUDGET,
@@ -382,6 +388,11 @@ def _build_parser() -> argparse.ArgumentParser:
     review_web.add_argument("--size", type=int, default=30)
     review_web.add_argument("--seed", type=int, default=42)
     review_web.add_argument("--out", type=Path, default=Path("reports/g8-web-review.csv"))
+    review_web.add_argument(
+        "--exclude-reviewed",
+        action="store_true",
+        help="held-out mode: drop publications that appear in an earlier g8-web-review*.csv",
+    )
 
     score_web = sub.add_parser("score-web", help="score a filled stance review (G-8, web corpus)")
     score_web.add_argument("--csv", type=Path, required=True)
@@ -1926,7 +1937,13 @@ def _cmd_report_web(
 
 
 def _cmd_review_web(
-    *, db_path: Path, target: str, size: int, seed: int, out_path: Path
+    *,
+    db_path: Path,
+    target: str,
+    size: int,
+    seed: int,
+    out_path: Path,
+    exclude_reviewed: bool = False,
 ) -> int:
     """Write a publication-stance review sample (G-8 for the web corpus).
 
@@ -1953,6 +1970,15 @@ def _cmd_review_web(
                 )
                 return EXIT_CONFIG
             pooled.extend(rows)
+        if exclude_reviewed:
+            sheets = sorted(out_path.parent.glob("g8-web-review*.csv"))
+            excluded = reviewed_ids(sheets)
+            before = len(pooled)
+            pooled = [row for row in pooled if row[0] not in excluded]
+            print(
+                f"held-out mode: excluded {before - len(pooled)} publication(s) already used in "
+                f"{len(sheets)} earlier sheet(s)"
+            )
         sample = build_sample(
             pooled,
             repo.publication_excerpts([row[0] for row in pooled]),
@@ -2089,6 +2115,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 size=args.size,
                 seed=args.seed,
                 out_path=args.out,
+                exclude_reviewed=args.exclude_reviewed,
             )
         if args.command == "score-web":
             return _cmd_score_web(csv_path=args.csv, minimum=args.min)
