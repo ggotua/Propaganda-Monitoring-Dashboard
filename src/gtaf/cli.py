@@ -36,6 +36,7 @@ from gtaf.application.collect import (
     VideoUnavailableError,
     run_collection,
 )
+from gtaf.application.concordance import compare
 from gtaf.application.config import ConfigError
 from gtaf.application.ingest_web import ingest_all
 from gtaf.application.initialize import (
@@ -344,6 +345,8 @@ def _build_parser() -> argparse.ArgumentParser:
     ingest.add_argument(
         "--sitemap", action="store_true", help="backfill from the source sitemap (newest first)"
     )
+    ingest.add_argument("--start", default=None, help="first day to include (ISO date)")
+    ingest.add_argument("--end", default=None, help="last day to include (ISO date)")
 
     stance_web = sub.add_parser("stance-web", help="label stance on web publications (SPEC-018)")
     stance_web.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
@@ -354,6 +357,13 @@ def _build_parser() -> argparse.ArgumentParser:
     stance_web.add_argument("--limit", type=int, default=60)
     stance_web.add_argument("--provider", default="deepseek")
     stance_web.add_argument("--budget", type=float, default=None)
+
+    concordance = sub.add_parser("concordance", help="website vs broadcast comparison (SPEC-018)")
+    concordance.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    concordance.add_argument("--config", type=Path, default=Path("config/actors.yaml"))
+    concordance.add_argument("--source", default="imedi")
+    concordance.add_argument("--start", required=True)
+    concordance.add_argument("--end", required=True)
 
     return parser
 
@@ -1651,7 +1661,14 @@ def _cmd_probe(
 
 
 def _cmd_ingest_web(
-    *, db_path: Path, source_id: str | None, limit: int, delay: float, sitemap: bool = False
+    *,
+    db_path: Path,
+    source_id: str | None,
+    limit: int,
+    delay: float,
+    sitemap: bool = False,
+    start: str | None = None,
+    end: str | None = None,
 ) -> int:
     """Ingest web publications (SPEC-018).
 
@@ -1675,7 +1692,13 @@ def _cmd_ingest_web(
                 print(f"unknown source {source_id!r}", file=sys.stderr)
                 return EXIT_CONFIG
         results = ingest_all(
-            sources, BrowserFetcher(delay_s=delay), repo, limit=limit, sitemap=sitemap
+            sources,
+            BrowserFetcher(delay_s=delay),
+            repo,
+            limit=limit,
+            sitemap=sitemap,
+            start=date.fromisoformat(start) if start else None,
+            end=date.fromisoformat(end) if end else None,
         )
     finally:
         conn.close()
@@ -1766,6 +1789,48 @@ def _cmd_stance_web(
     return EXIT_OK
 
 
+def _cmd_concordance(
+    *, db_path: Path, config_path: Path, source_id: str, start: str, end: str
+) -> int:
+    """Compare a channel's website against its broadcast (SPEC-018, D-034 §4).
+
+    Args:
+        db_path: Database file, read-only.
+        config_path: Actor dictionary.
+        source_id: Channel to compare.
+        start: First day, ISO date.
+        end: Last day, ISO date.
+
+    Returns:
+        Process exit code.
+    """
+    actors = load_actor_config(config_path)
+    conn = open_database(db_path, read_only=True)
+    try:
+        repo = DuckDBRepository(conn)
+        report = compare(
+            repo,
+            source_id=source_id,
+            actors=actors,
+            start=date.fromisoformat(start),
+            end=date.fromisoformat(end),
+            method=ACTIVE_SEG_METHOD,
+        )
+    finally:
+        conn.close()
+
+    print(
+        f"{report.source_id}: {report.start} .. {report.end} | "
+        f"{report.segments} segment(s) vs {report.publications} publication(s)"
+    )
+    print(f"\n{'actor':18} {'broadcast':>10} {'web':>8}")
+    for item in report.shares:
+        print(f"{item.actor_id:18} {item.broadcast_share:>9.2%} {item.web_share:>7.2%}")
+    print(f"\nrho = {report.spearman:.3f}" if report.spearman is not None else "\nrho = n/a")
+    print(f"verdict: {report.verdict}")
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -1833,6 +1898,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "concordance":
+            return _cmd_concordance(
+                db_path=args.db,
+                config_path=args.config,
+                source_id=args.source,
+                start=args.start,
+                end=args.end,
+            )
         if args.command == "stance-web":
             return _cmd_stance_web(
                 db_path=args.db,
@@ -1851,6 +1924,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 limit=args.limit,
                 delay=args.delay,
                 sitemap=args.sitemap,
+                start=args.start,
+                end=args.end,
             )
         if args.command == "probe":
             return _cmd_probe(

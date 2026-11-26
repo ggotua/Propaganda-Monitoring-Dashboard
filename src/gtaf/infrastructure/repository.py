@@ -693,6 +693,53 @@ class DuckDBRepository:
         ).fetchall()
         return {str(row[0]): str(row[1]) for row in rows}
 
+    def list_publications_in_window(
+        self, *, source_id: str, start: object, end: object
+    ) -> tuple[tuple[str, str, str], ...]:
+        """Return publications inside a date window.
+
+        Args:
+            source_id: Source to read.
+            start: First day, inclusive.
+            end: Last day, inclusive.
+
+        Returns:
+            ``(publication_id, title, excerpt)`` rows.
+        """
+        rows = self._conn.execute(
+            "SELECT publication_id, title, coalesce(excerpt, '') FROM publications "
+            "WHERE source_id = ? AND published_at IS NOT NULL "
+            "AND CAST(published_at AS DATE) BETWEEN ? AND ?",
+            [source_id, start, end],
+        ).fetchall()
+        return tuple((str(row[0]), str(row[1]), str(row[2])) for row in rows)
+
+    def set_publication_date(self, publication_id_value: str, published_at: object) -> int:
+        """Write a publication's timestamp when it has none.
+
+        Args:
+            publication_id_value: Publication id.
+            published_at: Timestamp to write.
+
+        Returns:
+            Number of rows changed.
+
+        Notes:
+            Only fills a missing value: an explicit date parsed from a listing is more trustworthy than a
+            sitemap ``lastmod``, which records the last edit rather than publication.
+        """
+        before = self._conn.execute(
+            "SELECT count(*) FROM publications WHERE publication_id = ? AND published_at IS NULL",
+            [publication_id_value],
+        ).fetchone()
+        if not before or int(str(before[0])) == 0:
+            return 0
+        self._conn.execute(
+            "UPDATE publications SET published_at = ? WHERE publication_id = ?",
+            [published_at, publication_id_value],
+        )
+        return 1
+
     def list_web_sources(self, *, active_only: bool = True) -> tuple[WebSource, ...]:
         """Return configured web sources.
 

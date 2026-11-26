@@ -271,7 +271,7 @@ def _is_navigation(text: str) -> bool:
     return hits >= 3
 
 
-def extract_excerpt(page: str, *, max_chars: int = 400) -> str:
+def extract_excerpt(page: str, *, max_chars: int = 1500) -> str:
     """Return the first meaningful prose from an article page.
 
     Args:
@@ -348,6 +348,39 @@ def looks_like_article(url: str) -> bool:
     path = urlparse(url).path
     # Two shapes measure the same thing: TV Pirveli writes `/139842-slug`, Imedi writes `/484181/slug`.
     return re.search(r"/\d{3,}(?:-|/)", path) is not None
+
+
+def parse_sitemap_dates(xml: str) -> dict[str, datetime | None]:
+    """Return URL to last-modified timestamp from a sitemap.
+
+    Args:
+        xml: Sitemap body.
+
+    Returns:
+        Mapping of absolute URL to a naive UTC datetime (or None when a timestamp is unparseable).
+
+    Notes:
+        Imedi's sitemap carries ``<lastmod>`` for every URL. Reading it avoids re-fetching 400 article pages
+        just to learn when they were published — which is the difference between a one-request backfill and a
+        seven-minute one.
+    """
+    dates: dict[str, datetime | None] = {}
+    for block in re.findall(r"<url>(.*?)</url>", xml, re.DOTALL):
+        loc = re.search(r"<loc>(.*?)</loc>", block, re.DOTALL)
+        if not loc:
+            continue
+        lastmod = re.search(r"<lastmod>(.*?)</lastmod>", block, re.DOTALL)
+        parsed: datetime | None = None
+        if lastmod:
+            raw = clean_text(lastmod.group(1))
+            for pattern in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
+                try:
+                    parsed = datetime.strptime(raw, pattern)
+                except ValueError:
+                    continue
+                break
+        dates[clean_text(loc.group(1))] = parsed
+    return dates
 
 
 def newest_first(urls: Iterable[str], *, limit: int) -> tuple[str, ...]:

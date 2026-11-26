@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Protocol
 
 from gtaf.domain.web import (
@@ -23,6 +23,7 @@ from gtaf.domain.web import (
     parse_listing,
     parse_rss,
     parse_sitemap,
+    parse_sitemap_dates,
     publication_id,
 )
 
@@ -57,6 +58,10 @@ class PublicationStore(Protocol):
         """Insert or update one publication; returns rows written."""
         ...
 
+    def set_publication_date(self, publication_id: str, published_at: datetime) -> int:
+        """Write a publication's timestamp; returns rows written."""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class IngestResult:
@@ -79,8 +84,43 @@ class IngestResult:
     with_text: int
 
 
+def backfill_dates(source: WebSource, fetcher: Fetcher, store: PublicationStore) -> int:
+    """Fill missing publication dates from the source sitemap.
+
+    Args:
+        source: Configured source with a sitemap.
+        fetcher: Page fetcher.
+        store: Publication persistence.
+
+    Returns:
+        Number of dates written.
+
+    Notes:
+        One request per source. The alternative — re-fetching every article — is what a sitemap exists to
+        avoid.
+    """
+    if not source.sitemap_url or not fetcher.allowed(source.sitemap_url):
+        return 0
+    body = fetcher.get(source.sitemap_url, timeout=60)
+    dates = parse_sitemap_dates(body)
+    written = 0
+    for url, published_at in dates.items():
+        if published_at is None or not looks_like_article(url):
+            continue
+        written += store.set_publication_date(
+            publication_id(source.source_id, url), published_at
+        )
+    return written
+
+
 def discover(
-    source: WebSource, fetcher: Fetcher, *, limit: int, sitemap: bool = False
+    source: WebSource,
+    fetcher: Fetcher,
+    *,
+    limit: int,
+    sitemap: bool = False,
+    start: date | None = None,
+    end: date | None = None,
 ) -> tuple[RawItem, ...]:
     """Find candidate publications for a source.
 
@@ -89,22 +129,39 @@ def discover(
         fetcher: Page fetcher.
         limit: Maximum items.
         sitemap: Use the source's sitemap for a backfill instead of its listing page.
+        start: First day to include, when filtering a sitemap backfill by ``lastmod``.
+        end: Last day to include.
 
     Returns:
         Items, de-duplicated by title.
 
     Notes:
-        The sitemap path exists for two reasons: one source's listing is JavaScript-driven, and a listing page
-        holds ~25 articles — enough for a nightly delta, not for a comparison between channels.
+        The window filter exists because a concordance needs articles from the same days as the broadcast
+        corpus: measured 2026-11-26, the newest 400 Imedi articles were all from 24 to 26 November, leaving the
+        3 to 13 November broadcast window with zero web publications to compare against.
     """
     if sitemap and source.sitemap_url:
         if not fetcher.allowed(source.sitemap_url):
             return ()
         body = fetcher.get(source.sitemap_url, timeout=60)
-        urls = parse_sitemap(body, base_url=source.base_url, pattern=r".")
-        articles = [url for url in urls if looks_like_article(url)]
-        chosen = newest_first(articles, limit=limit)
-        return tuple(RawItem(url=url, title="") for url in chosen)
+        dates = parse_sitemap_dates(body)
+        wanted = [
+            url
+            for url, published_at in dates.items()
+            if looks_like_article(url)
+            and (
+                start is None
+                or end is None
+                or (
+                    published_at is not None
+                    and start <= published_at.date() <= end
+                )
+            )
+        ]
+        chosen = newest_first(wanted, limit=limit)
+        return tuple(
+            RawItem(url=url, title="", published_at=dates.get(url)) for url in chosen
+        )
 
     if not fetcher.allowed(source.listing_url):
         return ()
@@ -133,6 +190,8 @@ def ingest_source(
     limit: int = 20,
     now: datetime | None = None,
     sitemap: bool = False,
+    start: date | None = None,
+    end: date | None = None,
 ) -> IngestResult:
     """Ingest one source.
 
@@ -151,7 +210,7 @@ def ingest_source(
         permission decision recorded in the database, not a performance tweak.
     """
     moment = now or datetime.now(UTC).replace(tzinfo=None)
-    items = discover(source, fetcher, limit=limit, sitemap=sitemap)
+    items = discover(source, fetcher, limit=limit, sitemap=sitemap, start=start, end=end)
 
     stored = 0
     blocked = 0
@@ -235,6 +294,8 @@ def ingest_all(
     *,
     limit: int = 20,
     sitemap: bool = False,
+    start: date | None = None,
+    end: date | None = None,
 ) -> tuple[IngestResult, ...]:
     """Ingest every active source.
 
@@ -244,11 +305,15 @@ def ingest_all(
         store: Publication persistence.
         limit: Maximum publications per source.
         sitemap: Backfill from each source's sitemap.
+        start: First day to include, for a windowed sitemap backfill.
+        end: Last day to include.
 
     Returns:
         One result per source.
     """
     return tuple(
-        ingest_source(source, fetcher, store, limit=limit, sitemap=sitemap)
+        ingest_source(
+            source, fetcher, store, limit=limit, sitemap=sitemap, start=start, end=end
+        )
         for source in sources
     )

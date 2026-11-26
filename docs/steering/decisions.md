@@ -1336,3 +1336,62 @@ criticism of the incumbent side; the PM result is a reminder that "no criticism 
 criticism written". Revisit if: a human labels 30 web publications to give the publication stance its own G-8
 figure, or a longer excerpt shows a different pattern.
 
+### Addendum, 2026-11-26: the excerpt was too short, and the labels moved
+
+The excerpt cap was raised from 400 to **1,500 characters** after the concordance study showed the 400-character
+setting was biasing it (D-036). Relabelling on the longer text changed the counts, in the direction the reading
+of the texts predicted:
+
+| Actor | Source | At 400 chars | At 1,500 chars |
+|---|---|---|---|
+| Ivanishvili | TV Pirveli (opposition) | critical 4, unclear 5 | **critical 7, unclear 14**, neutral 1, supportive 1 |
+| Kobakhidze | TV Pirveli (opposition) | critical 0, neutral 16, unclear 7 | **critical 0**, neutral 16, unclear 7 |
+
+So the earlier "all six moved to `unclear`" finding was an artefact of how the body was extracted in that
+experiment — raw paragraph joining put the sidebar in the text. With the navigation-aware extractor, more text
+finds **more** criticism where the criticism exists, and still finds none where the outlet only quotes the
+politician. D-035's decision stands; its 400-character setting does not.
+
+---
+
+## D-036: Website and broadcast are concordant on the 3–13 November window — after fixing the excerpt length
+
+Status: Accepted (2026-11-26). First measurement of the concordance that D-034 §4 requires before web figures
+may be called airtime.
+
+Context: the comparison uses Imedi only, because it is the only channel with both corpora. Window 3–13 November
+2026: **4,837 broadcast segments** against **125 web publications** whose sitemap `lastmod` fell in the window.
+The metric is the Spearman correlation of per-actor mention shares (same matcher in both corpora), over the 14
+actors that appear in at least one of them.
+
+Result: **rho = 0.736**, above the 0.7 threshold — the verdict is "site attention tracks airtime on this window".
+
+The number is only reportable because of a correction worth recording. The first run, on 400-character
+excerpts, gave **rho = 0.651** and the verdict "not airtime". A sensitivity check re-extracted the same 125
+pages at 1,500 characters and rho rose to **0.736**. Broadcast segments are compared on up to 2,000 characters
+of speech; comparing them against a 400-character web excerpt systematically depresses web mention shares, and
+the "failure" was an artefact of the measurement, not a property of the channel.
+
+For reference, a naive full-page extraction gave zero web mentions for every actor, because Imedi pages carry
+about 9,600 characters of other stories below the article; the navigation-aware extractor is what makes the
+comparison meaningful at all.
+
+Decision:
+1. **Web excerpts are 1,500 characters**, not 400. Applies to concordance and to publication stance, so the two
+   measurements describe the same input.
+2. **The concordance verdict is window-specific and actor-bounded.** It licenses the sentence "on 3–13 November,
+   Imedi's site attention tracked its airtime across 14 actors". It does not license "the site equals the
+   broadcast" in general, and it says nothing about Formula, whose broadcast side does not exist.
+3. **Re-run the concordance whenever either side grows substantially.** A single window with 125 publications is
+   a check, not a certificate.
+
+Rejected:
+- **Report 0.651 as the result** — it measured the excerpt setting, not the channel.
+- **Report 0.736 without recording the 0.651 run** — the first number is the evidence that the parameter
+  matters, and hiding it would make the final figure look sturdier than it is.
+- **Apply the verdict to Formula** — no broadcast corpus exists for it (D-033); that remains a separate gap.
+
+Consequences: the project can now use Imedi web data as a *stated* proxy for its airtime on this window, with
+the correlation printed next to the figure. Every other channel's web data stays "what the site published".
+Revisit if: a second window or a larger sample moves rho below 0.7, which would withdraw the licence.
+
