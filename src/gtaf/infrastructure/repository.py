@@ -693,6 +693,59 @@ class DuckDBRepository:
         ).fetchall()
         return {str(row[0]): str(row[1]) for row in rows}
 
+    def publication_stance_rows(self, target: str) -> tuple[tuple[str, str, str, str, str, float], ...]:
+        """Return labelled publications for a review sample.
+
+        Args:
+            target: Actor id.
+
+        Returns:
+            ``(publication_id, source_id, leaning, title, label, confidence)`` rows, newest first.
+
+        Notes:
+            Only rows the model labelled: a review measures agreement with the model, so an unlabelled
+            publication has nothing to agree with.
+        """
+        rows = self._conn.execute(
+            "SELECT ps.publication_id, p.source_id, s.leaning, p.title, ps.label, "
+            "coalesce(ps.confidence, 0) "
+            "FROM publication_stance ps "
+            "JOIN publications p ON p.publication_id = ps.publication_id "
+            "JOIN sources s ON s.source_id = p.source_id "
+            "WHERE ps.target = ? ORDER BY p.published_at DESC NULLS LAST, p.fetched_at DESC",
+            [target],
+        ).fetchall()
+        return tuple(
+            (
+                str(row[0]),
+                str(row[1]),
+                str(row[2]),
+                str(row[3]),
+                str(row[4]),
+                float(str(row[5])),
+            )
+            for row in rows
+        )
+
+    def publication_excerpts(self, publication_ids: Sequence[str]) -> dict[str, str]:
+        """Return stored excerpts for the given publications.
+
+        Args:
+            publication_ids: Ids to read.
+
+        Returns:
+            Id to excerpt.
+        """
+        if not publication_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in publication_ids)
+        rows = self._conn.execute(
+            f"SELECT publication_id, coalesce(excerpt, '') FROM publications "
+            f"WHERE publication_id IN ({placeholders})",
+            list(publication_ids),
+        ).fetchall()
+        return {str(row[0]): str(row[1]) for row in rows}
+
     def publication_stats(self) -> tuple[tuple[str, str, int, int, str | None, str | None], ...]:
         """Return per-source counts and date coverage.
 

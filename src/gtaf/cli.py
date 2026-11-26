@@ -48,6 +48,7 @@ from gtaf.application.methods import ACTIVE_SEG_METHOD
 from gtaf.application.networks import build_network
 from gtaf.application.report import build_report
 from gtaf.application.report_web import ConcordanceBlock, build_web_report
+from gtaf.application.review_web import build_sample, read_labels, score, write_sample
 from gtaf.application.schedule import (
     DEFAULT_BATCH_LIMIT,
     DEFAULT_DAILY_BUDGET,
@@ -374,6 +375,17 @@ def _build_parser() -> argparse.ArgumentParser:
     report_web.add_argument("--concordance-source", default="imedi")
     report_web.add_argument("--start", default="2026-11-03")
     report_web.add_argument("--end", default="2026-11-13")
+
+    review_web = sub.add_parser("review-web", help="write a stance review sample (G-8, web corpus)")
+    review_web.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    review_web.add_argument("--target", required=True)
+    review_web.add_argument("--size", type=int, default=30)
+    review_web.add_argument("--seed", type=int, default=42)
+    review_web.add_argument("--out", type=Path, default=Path("reports/g8-web-review.csv"))
+
+    score_web = sub.add_parser("score-web", help="score a filled stance review (G-8, web corpus)")
+    score_web.add_argument("--csv", type=Path, required=True)
+    score_web.add_argument("--min", type=int, default=30)
 
     return parser
 
@@ -1913,6 +1925,84 @@ def _cmd_report_web(
     return EXIT_OK
 
 
+def _cmd_review_web(
+    *, db_path: Path, target: str, size: int, seed: int, out_path: Path
+) -> int:
+    """Write a publication-stance review sample (G-8 for the web corpus).
+
+    Args:
+        db_path: Database file, read-only.
+        target: Actor whose labels are reviewed.
+        size: Sample size.
+        seed: Seed, so the draw can be regenerated and audited.
+        out_path: CSV destination.
+
+    Returns:
+        Process exit code.
+    """
+    conn = open_database(db_path, read_only=True)
+    try:
+        repo = DuckDBRepository(conn)
+        targets = [item.strip() for item in target.split(",") if item.strip()]
+        pooled: list[tuple[str, str, str, str, str, float]] = []
+        for one in targets:
+            rows = repo.publication_stance_rows(one)
+            if not rows:
+                print(
+                    f"no stored labels for {one!r}; run stance-web first", file=sys.stderr
+                )
+                return EXIT_CONFIG
+            pooled.extend(rows)
+        sample = build_sample(
+            pooled,
+            repo.publication_excerpts([row[0] for row in pooled]),
+            target=",".join(targets),
+            size=size,
+            seed=seed,
+        )
+    finally:
+        conn.close()
+
+    written = write_sample(sample, out_path)
+    print(f"wrote {written} row(s) to {out_path}")
+    print(
+        "Fill the `human_label` column with one of: supportive, critical, neutral, unclear. "
+        "Then score with `gtaf score-web --csv`."
+    )
+    counts: dict[str, int] = {}
+    for row in sample:
+        counts[row.model_label] = counts.get(row.model_label, 0) + 1
+    print("model labels in the sample: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    return EXIT_OK
+
+
+def _cmd_score_web(*, csv_path: Path, minimum: int) -> int:
+    """Score a filled publication-stance review.
+
+    Args:
+        csv_path: Filled CSV.
+        minimum: G-8 sample floor.
+
+    Returns:
+        Process exit code.
+    """
+    if not csv_path.exists():
+        print(f"{csv_path} does not exist", file=sys.stderr)
+        return EXIT_CONFIG
+    human, model = read_labels(csv_path)
+    if not human:
+        print("no filled `human_label` rows yet", file=sys.stderr)
+        return EXIT_CONFIG
+    agreement, enough = score(human, model, min_items=minimum)
+
+    print(f"{agreement.agree}/{agreement.n} = {agreement.rate:.1%} | Cohen's kappa = {agreement.kappa:.3f}")
+    print(f"\n{'class':11} {'agree':>6} {'total':>6} {'rate':>7}")
+    for class_label, class_agree, class_total in agreement.per_class:
+        print(f"{class_label:11} {class_agree:>6} {class_total:>6} {class_agree / class_total:>6.1%}")
+    print(f"\nsample floor: {agreement.n}/{minimum} — " + ("met" if enough else "NOT met"))
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -1980,6 +2070,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "review-web":
+            return _cmd_review_web(
+                db_path=args.db,
+                target=args.target,
+                size=args.size,
+                seed=args.seed,
+                out_path=args.out,
+            )
+        if args.command == "score-web":
+            return _cmd_score_web(csv_path=args.csv, minimum=args.min)
         if args.command == "report-web":
             return _cmd_report_web(
                 db_path=args.db,
