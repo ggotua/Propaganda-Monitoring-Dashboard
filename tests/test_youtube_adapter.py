@@ -59,6 +59,18 @@ def test_caption_payload_404_is_a_video_skip(monkeypatch) -> None:
         source._download_text("https://example/caption")
 
 
+def test_proxy_is_passed_to_ytdlp() -> None:
+    """Measured 2026-11-26: YouTube answers transcript requests from this host with IpBlocked in two
+    independent clients, so a different egress IP is the only lever. The adapter must carry a proxy."""
+    from gtaf.infrastructure.youtube import YtDlpSource
+
+    with_proxy = YtDlpSource(quiet=True, proxy="http://127.0.0.1:8080")._ydl()
+    without = YtDlpSource(quiet=True)._ydl()
+
+    assert with_proxy.params.get("proxy") == "http://127.0.0.1:8080"
+    assert not without.params.get("proxy")
+
+
 def test_parse_rss_extracts_ids_and_titles() -> None:
     """The RSS listing is the light path that avoids burning the caption quota."""
     from gtaf.infrastructure.youtube import parse_rss

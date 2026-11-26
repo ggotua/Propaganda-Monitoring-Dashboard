@@ -30,7 +30,12 @@ from gtaf.application.actors import (
     scan_actors,
     spot_check_sample,
 )
-from gtaf.application.collect import ClientBlockedError, CollectPlan, run_collection
+from gtaf.application.collect import (
+    ClientBlockedError,
+    CollectPlan,
+    VideoUnavailableError,
+    run_collection,
+)
 from gtaf.application.config import ConfigError
 from gtaf.application.initialize import (
     SchemaVersionError,
@@ -86,7 +91,7 @@ from gtaf.infrastructure.raw_store import FileRawStore
 from gtaf.infrastructure.repository import DuckDBRepository
 from gtaf.infrastructure.topics_bertopic import DEFAULT_MODEL as DEFAULT_TOPIC_MODEL
 from gtaf.infrastructure.topics_bertopic import BertopicEngine
-from gtaf.infrastructure.youtube import YtDlpSource
+from gtaf.infrastructure.youtube import YtDlpSource, list_uploads_rss
 from gtaf.presentation.report_html import render_html
 
 EXIT_OK = 0
@@ -153,6 +158,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=2.0,
         help="seconds to sleep after every network call (default: 2.0)",
+    )
+    collect.add_argument(
+        "--proxy",
+        default=None,
+        help="HTTP(S) proxy URL; the only lever that works once YouTube blocks this IP (D-032)",
     )
     collect.add_argument(
         "--skip-existing",
@@ -308,6 +318,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="print cumulative agreement from stored results without calling any vendor",
     )
+
+    probe = sub.add_parser("probe", help="one caption request, to test the IP block (SPEC-010)")
+    probe.add_argument("--config-dir", type=Path, default=Path("config"))
+    probe.add_argument("--channel", default="formula")
+    probe.add_argument("--proxy", default=None, help="HTTP(S) proxy URL")
 
     return parser
 
@@ -469,6 +484,7 @@ def _cmd_collect(
     listing_limit: int,
     throttle: float,
     skip_existing: bool = False,
+    proxy: str | None = None,
 ) -> int:
     """Collect in-window videos and captions, then print a coverage report (FR-10, §3.7).
 
@@ -514,7 +530,7 @@ def _cmd_collect(
             channels,
             programmes_by_channel,
             plan,
-            source=YtDlpSource(throttle=throttle),
+            source=YtDlpSource(throttle=throttle, proxy=proxy),
             repo=DuckDBRepository(conn),
             raw_store=FileRawStore(raw_dir),
             logger=logger,
@@ -1537,6 +1553,69 @@ def _cmd_validate(
     return EXIT_OK
 
 
+def _cmd_probe(*, config_dir: Path, channel: str, proxy: str | None) -> int:
+    """Make one caption request to test whether the IP is still blocked (D-032).
+
+    Args:
+        config_dir: Corpus configuration, for the channel handle.
+        channel: Channel id to probe.
+        proxy: Optional HTTP(S) proxy URL.
+
+    Returns:
+        ``EXIT_OK`` when a transcript came back, ``EXIT_BLOCKED`` when YouTube refused.
+
+    Notes:
+        One request, no listing: measured 2026-11-26, a full run burns the small budget that a single probe
+        would have used. This command exists so a human can test the block without spending a run.
+    """
+    bundle = load_configuration(config_dir)
+    configured = next(
+        (item for item in bundle.channels if item.channel_id == channel and item.active), None
+    )
+    if configured is None or not configured.youtube_handle:
+        print(f"channel {channel!r} is not configured with a handle", file=sys.stderr)
+        return EXIT_CONFIG
+
+    source = YtDlpSource(throttle=0.0, proxy=proxy)
+    try:
+        uploads = list_uploads_rss(configured.youtube_handle, 3)
+    except Exception as exc:  # noqa: BLE001 - a probe reports, it does not crash
+        print(f"probe: listing failed ({type(exc).__name__}: {str(exc)[:120]})")
+        return EXIT_BLOCKED
+    if not uploads:
+        print("probe: the feed returned no uploads")
+        return EXIT_BLOCKED
+
+    # Three outcomes must be distinguishable, because they call for different decisions:
+    #   blocked  -> change the egress IP (proxy, VPN, another network);
+    #   no text  -> the endpoint answered, this video simply has no Georgian captions;
+    #   ok       -> collection can resume.
+    empty: list[str] = []
+    for upload in uploads:
+        try:
+            fetched = source.fetch_video(upload.video_id)
+        except ClientBlockedError as exc:
+            print(f"probe: BLOCKED on {upload.video_id} ({str(exc)[:100]})")
+            return EXIT_BLOCKED
+        except VideoUnavailableError:
+            empty.append(upload.video_id)
+            continue
+        if fetched.cues:
+            print(
+                f"probe: OK on {upload.video_id} — cues={len(fetched.cues)} "
+                f"payload={len(fetched.raw_payload or '')}B"
+                + (" (via proxy)" if proxy else "")
+            )
+            return EXIT_OK
+        empty.append(upload.video_id)
+
+    print(
+        f"probe: endpoint reachable, but none of {len(empty)} video(s) carried a Georgian "
+        f"transcript ({', '.join(empty[:3])}) — not a block, just no captions"
+    )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -1604,6 +1683,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "probe":
+            return _cmd_probe(
+                config_dir=args.config_dir, channel=args.channel, proxy=args.proxy
+            )
         if args.command == "validate":
             return _cmd_validate(
                 db_path=args.db,
@@ -1685,6 +1768,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 listing_limit=args.listing_limit,
                 throttle=args.throttle,
                 skip_existing=args.skip_existing,
+                proxy=args.proxy,
             )
     except ConfigError as exc:
         for violation in exc.violations:

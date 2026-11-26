@@ -147,7 +147,7 @@ def test_collect_wires_end_to_end(tmp_path: Path, monkeypatch, capsys) -> None:
     assert main(["init-db", str(db_path), "--log-dir", str(log_dir)]) == EXIT_OK
     capsys.readouterr()
 
-    monkeypatch.setattr(cli, "YtDlpSource", lambda throttle: _StubSource())
+    monkeypatch.setattr(cli, "YtDlpSource", lambda throttle, proxy=None: _StubSource())
     code = main(
         [
             "collect",
@@ -184,7 +184,7 @@ def test_collect_reports_block_with_exit_five(tmp_path: Path, monkeypatch, capsy
     monkeypatch.setattr(
         cli,
         "YtDlpSource",
-        lambda throttle: _StubSource(fail_with=ClientBlockedError("HTTP Error 429")),
+        lambda throttle, proxy=None: _StubSource(fail_with=ClientBlockedError("HTTP Error 429")),
     )
     code = main(
         [

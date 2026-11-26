@@ -186,16 +186,22 @@ def html_unescape(text: str) -> str:
 class YtDlpSource:
     """Video source backed by yt-dlp."""
 
-    def __init__(self, *, throttle: float = 2.0, quiet: bool = True) -> None:
+    def __init__(
+        self, *, throttle: float = 2.0, quiet: bool = True, proxy: str | None = None
+    ) -> None:
         """Initialise the source.
 
         Args:
             throttle: Seconds to sleep after every network call. Applies to listing as well as to
                 per-video fetches; a listing burst is what triggered a bot check once already.
             quiet: Suppress yt-dlp's own output.
+            proxy: Optional HTTP(S) proxy URL. Measured 2026-11-26: YouTube answers transcript requests from
+                this host with `IpBlocked` in two independent clients, so the only working lever is a
+                different egress IP — a proxy, a VPN, or another network.
         """
         self._throttle = throttle
         self._quiet = quiet
+        self._proxy = proxy
 
     def _ydl(self, *, flat_limit: int | None = None) -> Any:
         """Build a YoutubeDL instance.
@@ -223,6 +229,8 @@ class YtDlpSource:
         if flat_limit is not None:
             # Mandatory: without it yt-dlp paginates the channel's entire upload history.
             options["playlistend"] = flat_limit
+        if self._proxy:
+            options["proxy"] = self._proxy
         return yt_dlp.YoutubeDL(options)
 
     def list_uploads(self, handle: str, limit: int) -> Sequence[UploadRef]:
@@ -367,6 +375,12 @@ class YtDlpSource:
                 stored with captions it does not have.
         """
         try:
+            if self._proxy:
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({"http": self._proxy, "https": self._proxy})
+                )
+                with opener.open(url, timeout=30) as response:
+                    return str(response.read().decode("utf-8", errors="replace"))
             with urllib.request.urlopen(url, timeout=30) as response:
                 return str(response.read().decode("utf-8", errors="replace"))
         except Exception as exc:

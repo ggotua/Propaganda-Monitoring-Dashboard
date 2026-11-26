@@ -107,7 +107,7 @@ were taken during implementation.
 | SPEC-007 | **Approved and implemented** — 62 topics over 4,837 drift segments, **38.2 % outliers**, mpnet chosen on measurement (D-020) |
 | SPEC-008 | **Approved and implemented** — Streamlit workbench renders the real corpus with the outlier rate on the page; 141 tests |
 | SPEC-009 | **Approved and implemented** — self-contained 4.8 MB HTML report, no external references, outlier rate stated three times (D-021: no Quarto) |
-| SPEC-010 | **Approved and implemented** — paced `next` decision, `runs` history, Task Scheduler script; picks Formula next (0 videos) |
+| SPEC-010 | **Approved and implemented** — paced `next` decision, `runs` history, Task Scheduler script; weekly backoff. **Block confirmed at the IP level** (D-033: an independent client reports `IpBlocked`), so `--proxy` and `gtaf probe` were added |
 | SPEC-011 | **Approved and implemented** — dictionary + ending + calibrated fuzzy matching; G-5 passed at 0.96; **D-031 adds title/role exclusion** for ASR name substitution (75 of 365 matched segments excluded, Saakashvili 108 → 84) |
 | SPEC-012 | **Approved and implemented** — co-occurrence network; **unit = broadcast** (D-030: segment level gives 0.43 % of units, video level 17.9 %); top pair Kobakhidze–Papuashvili in 17 of 262 broadcasts |
 | SPEC-013 | **Implemented, gate PARTIAL** — stance v2: overall 0.84 (42/50); targeted check on the incumbent 28/29 (neutral 95 %, supportive 89 %). **Incumbent-criticism is unmeasured**: 1/94 critical labels on the only channel (Imedi). Stance for government targets stays unpublished until opposition channels are collected (blocked until 2026-11-25, D-024) |

@@ -1168,3 +1168,39 @@ review needs (Formula, TV Pirveli — already configured, zero videos) may not a
 is still a real improvement: it removes the heaviest request from every run and is tested. Revisit if: a
 measured window shows the limiter is time-based after all, or a paid/authenticated route becomes available.
 
+---
+
+## D-033: The block is at the IP level — only a different egress IP helps
+
+Status: Accepted (2026-11-26). Measured with a second, independent client.
+
+Context: after D-032 changed the retry shape, a direct question remained — is our code path the problem, or
+the IP? Two independent clients were tested against the same videos:
+
+| Client | Result |
+|---|---|
+| our yt-dlp path (metadata + caption payload) | `HTTP 429` on the caption fetch, both channels |
+| `youtube-transcript-api 1.2.5` (independent library, its own protocol) | `IpBlocked` on the same two videos |
+| a single hand-made request after 11 days idle (25 Nov) | `200 OK`, then `429` on the next |
+
+The second client is decisive: it does not share our code, our headers or our request shape, and it reports
+the block explicitly as **IpBlocked**. Our implementation is not the cause.
+
+Decision:
+1. **Accept the IP block as an external constraint.** No further tuning of clients, throttles or listing is
+   expected to help; D-032's weekly backoff stays.
+2. **Add proxy support** (`gtaf collect --proxy`, `gtaf probe --proxy`), wired into both the yt-dlp options and
+   the caption fetch. A different egress IP is the one lever the evidence supports.
+3. **Add `gtaf probe`** — one caption request, no listing — so a human can test a proxy or another network
+   without spending a run. It distinguishes three states: blocked, reachable-but-no-captions, and working.
+
+Rejected:
+- **Try another transcript library as the fix** — measured: it reports the same block.
+- **Rotate user agents or headers** — the second client already sends its own; the block is not fingerprint-based.
+- **Automate proxy rotation into the pipeline** — it is a paid service and an evasion decision that belongs to
+  the project owner, not a default.
+
+Consequences: collection resumes only when the egress IP changes (proxy, VPN, mobile hotspot) or YouTube lifts
+the block. Everything downstream that needs more data — opposition channels, the incumbent-criticism test —
+is gated on that. Revisit if: a proxy is configured and `gtaf probe` returns OK, or a hotspot attempt succeeds.
+
