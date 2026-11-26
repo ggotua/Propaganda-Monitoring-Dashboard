@@ -693,6 +693,30 @@ class DuckDBRepository:
         ).fetchall()
         return {str(row[0]): str(row[1]) for row in rows}
 
+    def publication_stats(self) -> tuple[tuple[str, str, int, int, str | None, str | None], ...]:
+        """Return per-source counts and date coverage.
+
+        Returns:
+            ``(source_id, leaning, total, dated, first_day, last_day)``.
+        """
+        rows = self._conn.execute(
+            "SELECT p.source_id, s.leaning, count(*), count(p.published_at), "
+            "CAST(min(p.published_at) AS DATE), CAST(max(p.published_at) AS DATE) "
+            "FROM publications p JOIN sources s ON s.source_id = p.source_id "
+            "GROUP BY 1, 2 ORDER BY 1"
+        ).fetchall()
+        return tuple(
+            (
+                str(row[0]),
+                str(row[1]),
+                _as_int(row[2]),
+                _as_int(row[3]),
+                str(row[4]) if row[4] is not None else None,
+                str(row[5]) if row[5] is not None else None,
+            )
+            for row in rows
+        )
+
     def list_publications_in_window(
         self, *, source_id: str, start: object, end: object
     ) -> tuple[tuple[str, str, str], ...]:

@@ -47,6 +47,7 @@ from gtaf.application.initialize import (
 from gtaf.application.methods import ACTIVE_SEG_METHOD
 from gtaf.application.networks import build_network
 from gtaf.application.report import build_report
+from gtaf.application.report_web import ConcordanceBlock, build_web_report
 from gtaf.application.schedule import (
     DEFAULT_BATCH_LIMIT,
     DEFAULT_DAILY_BUDGET,
@@ -97,6 +98,7 @@ from gtaf.infrastructure.topics_bertopic import BertopicEngine
 from gtaf.infrastructure.web_fetch import BrowserFetcher
 from gtaf.infrastructure.youtube import YtDlpSource, list_uploads_rss
 from gtaf.presentation.report_html import render_html
+from gtaf.presentation.report_web import render_web_report
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -364,6 +366,14 @@ def _build_parser() -> argparse.ArgumentParser:
     concordance.add_argument("--source", default="imedi")
     concordance.add_argument("--start", required=True)
     concordance.add_argument("--end", required=True)
+
+    report_web = sub.add_parser("report-web", help="build the web-corpus HTML report (SPEC-018)")
+    report_web.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    report_web.add_argument("--config", type=Path, default=Path("config/actors.yaml"))
+    report_web.add_argument("--out", type=Path, default=Path("reports/web-corpus.html"))
+    report_web.add_argument("--concordance-source", default="imedi")
+    report_web.add_argument("--start", default="2026-11-03")
+    report_web.add_argument("--end", default="2026-11-13")
 
     return parser
 
@@ -1831,6 +1841,78 @@ def _cmd_concordance(
     return EXIT_OK
 
 
+def _cmd_report_web(
+    *,
+    db_path: Path,
+    config_path: Path,
+    out_path: Path,
+    concordance_source: str,
+    start: str,
+    end: str,
+) -> int:
+    """Build the web-corpus HTML report (SPEC-018).
+
+    Args:
+        db_path: Database file, read-only.
+        config_path: Actor dictionary.
+        out_path: Where to write the HTML.
+        concordance_source: Channel used for the website-versus-broadcast check.
+        start: First day of the comparison window.
+        end: Last day.
+
+    Returns:
+        Process exit code.
+    """
+    actors = load_actor_config(config_path)
+    conn = open_database(db_path, read_only=True)
+    try:
+        repo = DuckDBRepository(conn)
+        report = compare(
+            repo,
+            source_id=concordance_source,
+            actors=actors,
+            start=date.fromisoformat(start),
+            end=date.fromisoformat(end),
+            method=ACTIVE_SEG_METHOD,
+        )
+        concordance = ConcordanceBlock(
+            available=report.publications > 0,
+            source_id=report.source_id,
+            start=report.start,
+            end=report.end,
+            segments=report.segments,
+            publications=report.publications,
+            rho=report.spearman,
+            verdict=report.verdict,
+        )
+        stance_targets = [
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT target FROM publication_stance ORDER BY target"
+            ).fetchall()
+        ]
+        data = build_web_report(
+            repo,
+            actors=actors,
+            stance_targets=stance_targets,
+            concordance=concordance,
+            generated_on=datetime.now(UTC).date(),
+        )
+    finally:
+        conn.close()
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(render_web_report(data), encoding="utf-8")
+    size_kb = out_path.stat().st_size / 1024
+    print(f"wrote {out_path} ({size_kb:.0f} KB)")
+    print(
+        f"sources: {len(data.sources)} | publications: {sum(item.total for item in data.sources)} | "
+        f"stance actors: {len(data.stance)} | rho: "
+        + (f"{data.concordance.rho:.3f}" if data.concordance.rho is not None else "n/a")
+    )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -1898,6 +1980,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "report-web":
+            return _cmd_report_web(
+                db_path=args.db,
+                config_path=args.config,
+                out_path=args.out,
+                concordance_source=args.concordance_source,
+                start=args.start,
+                end=args.end,
+            )
         if args.command == "concordance":
             return _cmd_concordance(
                 db_path=args.db,
