@@ -1204,3 +1204,27 @@ Consequences: collection resumes only when the egress IP changes (proxy, VPN, mo
 the block. Everything downstream that needs more data — opposition channels, the incumbent-criticism test —
 is gated on that. Revisit if: a proxy is configured and `gtaf probe` returns OK, or a hotspot attempt succeeds.
 
+### Addendum, 2026-11-26: the "make it look like a home PC" levers were tested and do not help
+
+The suggestion was that YouTube treats our requests as coming from a server, and that imitating a home PC
+fixes it. Five variants were tried on one blocked Formula video; every one still returned `429` on the caption
+payload, and none produced a `json3` file:
+
+| Variant | Command flags | Result |
+|---|---|---|
+| browser TLS fingerprint | `--impersonate chrome` (with `curl_cffi` installed) | 429 |
+| JS runtime for tokens | `--js-runtimes node`, plus impersonation | 429 |
+| IPv4 only | `--force-ipv4`, plus the above | 429 |
+| alternate player clients | `--extractor-args youtube:player_client=mweb,ios,web_embedded` | 429 |
+| independent client | `youtube-transcript-api 1.2.5` | `IpBlocked` |
+
+Two facts make the "server IP" theory unlikely on this machine. The public address is **212.58.102.238,
+AS16010 Magticom Ltd, Tbilisi** — a residential ISP, not a hosting provider — and no proxy environment
+variable is set (`HTTP(S)_PROXY`, `ALL_PROXY` all unset). So YouTube is not objecting to the network's
+reputation; it is capping **this address after heavy use**, which is the volume behaviour D-018 measured.
+
+The one untested local lever that genuinely changes the session from "anonymous client" to "a person's
+browser" is **cookies from a signed-in browser** (`--cookies-from-browser` or an exported `cookies.txt`). That
+requires the owner's decision — D-015 declined cookies for age gates precisely because they expire and fail
+silently — so it is proposed rather than assumed.
+
