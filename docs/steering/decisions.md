@@ -1444,3 +1444,63 @@ Improving implicature detection needs either a stronger model on this task or a 
 questions and headline framing, and that is a separate experiment. Revisit if: the re-run review on the
 target-aware sheet reaches 0.80 overall with `critical` above 50 %.
 
+---
+
+## D-038: The negative wording of the target rule caused the recall collapse; v4 states it positively
+
+Status: Accepted (2026-11-26). Follows D-037, on a second human review.
+
+Context: the v3 review scored **19/30 (63 %)**, or 21/30 if `neutral` and `unclear` are merged. The reviewer's
+diagnosis was specific and is the reason this decision exists: the rule "label only if the target is named or
+clearly implicated" was read by the model as **"only if the article is mainly about him"**. So instead of
+rejecting off-target criticism, the model rejected criticism that names the target whenever the article had
+another focus. `unclear` went from 7 to 9 of 23 on the Kobakhidze sample, and recall collapsed: of **11**
+critical publications it caught **4**, and **0 of 2** supportive.
+
+Two things were also confirmed as fixed: `neutral` became reliable (11 of 12 neutral labels correct) and the
+self-praise quote-headlines became consistently neutral.
+
+Decision — the prompt states the rule **positively** (`stance-v4`):
+
+> If the text names the target and attributes an action, motive or quality to him, label the stance of **that
+> attribution** — the article does not need to be mainly about him.
+
+plus the single named exception (text that never names and never clearly implicates the target is `unclear`),
+and **five few-shot examples drawn from this batch**, two of them supportive, as the reviewer proposed. A
+sentence was also added making the **headline** part of the evaluated text ("if the headline says he 'joked' or
+'lied', that is a stance and must be labelled").
+
+Measured on the same 52 publications:
+
+| Target / source | v3 | v4 |
+|---|---|---|
+| Kobakhidze / TV Pirveli `critical` | **0** | **3** |
+| Kobakhidze / TV Pirveli `unclear` | 9 | **1** |
+| Ivanishvili / TV Pirveli `critical` | 6 | **14** |
+| Ivanishvili / TV Pirveli `unclear` | 15 | **6** |
+| Ivanishvili / Imedi `supportive` | 0 | **1** |
+
+Spot-checked against the reviewer's own list: v4 recovers **all three** Kobakhidze pieces they named (the
+Khukhashvili "eating Mdinaradze means eating Kobakhidze", the Kharazishvili honour, the "joked about the threat"
+headline) and **all four** Ivanishvili pieces (Goszewska's sanctions demand, Khukhashvili's metaphor, the baobab
+story, the unkept Ponichala promise), plus the Zarkua defence as `supportive`.
+
+On the reviewer's third suggestion — one label per target, so a piece can be critical of both — the pipeline
+already works that way: stance is rendered and stored **per target**, so the Khukhashvili article now carries
+`critical` under both Ivanishvili and Kobakhidze. No code change was needed; what was missing was a sample that
+said which target each row belonged to (D-037).
+
+Rejected:
+- **Treat v4 as validated** — it is not. The counts moved in the direction the reviewer predicted and match the
+  cases they named, but the labels were not re-reviewed by a human. Until they are, the web-corpus G-8 stays
+  FAILED and these numbers are a hypothesis with evidence, not a passing gate.
+- **Merge `neutral` and `unclear` to lift the score from 63 % to 70 %** — convenient, and it would hide the
+  boundary that the review was specifically checking.
+- **Add examples without a positive rule** — examples alone leave the model inferring the rule from five cases,
+  and the misreading came from the rule's wording.
+
+Consequences: the sheet was regenerated for a third review (`reports/g8-web-review-v4.csv`, with the target
+column and v4 labels). If that review reaches 0.80 overall with `critical` recall above half, the publication
+corpus earns its first G-8 pass. Revisit if: the re-review scores `critical` poorly again, which would say the
+problem is the model's reading of implicature, not the prompt's wording.
+

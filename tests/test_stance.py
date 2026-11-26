@@ -215,8 +215,29 @@ def test_prompt_v2_states_the_target_rule_and_quote_duty() -> None:
     from gtaf.domain.stance import build_prompt
 
     prompt = build_prompt("ტექსტი", target_en="Saakashvili", target_ka="სააკაშვილი")
-    assert "არ არის მისი შეფასება" in prompt  # hostility to an associate is not the target's evaluation
+    assert "მიაწერს" in prompt  # the attribution rule is stated positively
     assert "quote" in prompt
+
+
+def test_prompt_v4_states_the_rule_positively_and_carries_examples() -> None:
+    """Measured 2026-11-26: the negative wording ("only if named or clearly implicated") was read as
+    "only if the article is mainly about him", and `critical` recall collapsed to 4 of 11.
+
+    A positive rule plus few-shot examples is the repair; both must be in the prompt itself, because that is
+    what the model reads.
+    """
+    from gtaf.domain.stance import PROMPT_VERSION, build_prompt
+
+    prompt = build_prompt("ტექსტი", target_en="Kobakhidze", target_ka="კობახიძე")
+
+    assert PROMPT_VERSION == "stance-v4"
+    assert "არ უნდა იყოს ძირითადად მასზე" in prompt  # explicitly counters the misreading
+    assert prompt.count("— critical:") >= 2  # at least two critical examples
+    assert prompt.count("— supportive:") >= 2  # two supportive examples, as the reviewer asked
+    assert "— neutral:" in prompt
+    # Both targets must be able to receive a label from the same passage: the prompt is rendered per target.
+    other = build_prompt("ტექსტი", target_en="Ivanishvili", target_ka="ივანიშვილი")
+    assert "ივანიშვილი" in other
 
 
 def test_stance_rows_can_be_filtered_by_prompt_version(initialized_db) -> None:

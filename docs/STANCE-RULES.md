@@ -23,6 +23,26 @@ Measured effect of v3: `supportive` on the Kobakhidze sample 1 → 0, and Ivanis
 regime-attacks moved to `unclear`. Under-detection did **not** improve: TV Pirveli's Kobakhidze coverage still
 gets zero `critical` labels where a human found four in thirty (D-037).
 
+## 0a. What stance-v4 changed, and why
+
+The v3 rule was worded **negatively** — "label only if the target is named or clearly implicated" — and the
+model read it as *"only if the article is mainly about him"*. The result was the opposite failure: `unclear`
+inflation and collapsed recall (4 of 11 critical, 0 of 2 supportive caught).
+
+v4 states the rule **positively** and adds five examples taken from the reviewed batch:
+
+> If the text names the target and attributes an action, motive or quality to him, label the stance of **that
+> attribution** — the article does not need to be mainly about him.
+
+Also added: the **headline is part of the text** ("if the headline says he 'joked' or 'lied', that is a stance").
+
+Measured on the same 52 publications: Kobakhidze `critical` 0 → **3**, `unclear` 9 → **1**; Ivanishvili
+`critical` 6 → **14**, `unclear` 15 → **6**, `supportive` 0 → **1**. All three Kobakhidze pieces and all four
+Ivanishvili pieces named in the review are recovered.
+
+**Not yet validated.** These labels have not been re-reviewed by a human, so the publication G-8 remains failed
+until `reports/g8-web-review-v4.csv` is scored (D-038).
+
 
 The labels describe **how the segment frames the named person**, not what anyone believes, and not what is
 true. Every rule below exists to make two reviewers independently reach the same label.
