@@ -46,7 +46,7 @@ class ReviewRow:
 
 
 def build_sample(
-    rows: Sequence[tuple[str, str, str, str, str, float]],
+    rows: Sequence[tuple[str, str, str, str, str, float, str]],
     excerpts: dict[str, str],
     *,
     target: str,
@@ -57,9 +57,9 @@ def build_sample(
     """Draw a review sample from labelled publications.
 
     Args:
-        rows: ``(publication_id, source_id, leaning, title, label, confidence)``.
+        rows: ``(publication_id, source_id, leaning, title, label, confidence, target)``.
         excerpts: Publication id to stored excerpt.
-        target: Actor the labels concern.
+        target: Label for the sample as a whole, for the header only.
         size: Requested sample size.
         seed: Random seed, so the same sample can be regenerated and audited.
         per_source_min: Floor per source, so a small source is still represented.
@@ -70,8 +70,12 @@ def build_sample(
     Notes:
         Sampling is random *within* each source and proportional *across* sources. Sampling by model label would
         over-represent rare classes and flatter the agreement figure — the very thing being measured.
+
+        Each row keeps **its own** target, because a pooled sample drawn from two actors is otherwise
+        unlabelable: measured 2026-11-26, a reviewer had to assume one target for a sheet that mixed two, and the
+        resulting agreement figure could not be interpreted.
     """
-    by_source: dict[str, list[tuple[str, str, str, str, str, float]]] = {}
+    by_source: dict[str, list[tuple[str, str, str, str, str, float, str]]] = {}
     for row in rows:
         by_source.setdefault(row[1], []).append(row)
     if not by_source:
@@ -84,7 +88,7 @@ def build_sample(
         proportional = max(per_source_min, round(size * len(items) / total))
         quotas[source] = min(len(items), proportional)
 
-    chosen: list[tuple[str, str, str, str, str, float]] = []
+    chosen: list[tuple[str, str, str, str, str, float, str]] = []
     for source, items in by_source.items():
         ordered = sorted(items, key=lambda item: item[0])
         generator.shuffle(ordered)
@@ -103,11 +107,11 @@ def build_sample(
             excerpt=excerpts.get(row[0], ""),
             model_label=row[4],
             confidence=row[5],
-            target=target,
+            target=row[6],
         )
         for row in chosen
     ]
-    return tuple(sorted(sample, key=lambda item: (item.source_id, item.title)))
+    return tuple(sorted(sample, key=lambda item: (item.target, item.source_id, item.title)))
 
 
 def write_sample(sample: Sequence[ReviewRow], path: Path) -> int:
@@ -130,6 +134,7 @@ def write_sample(sample: Sequence[ReviewRow], path: Path) -> int:
         writer.writerow(
             [
                 "publication_id",
+                "target",
                 "source",
                 "leaning",
                 "title",
@@ -144,6 +149,7 @@ def write_sample(sample: Sequence[ReviewRow], path: Path) -> int:
             writer.writerow(
                 [
                     row.publication_id,
+                    row.target,
                     row.source_id,
                     row.leaning,
                     row.title,
@@ -157,22 +163,29 @@ def write_sample(sample: Sequence[ReviewRow], path: Path) -> int:
     return len(sample)
 
 
-def read_labels(path: Path) -> tuple[dict[str, str], dict[str, str]]:
+def read_labels(path: Path) -> list[tuple[str, str, str, str]]:
     """Read a filled review CSV.
 
     Args:
         path: File written by :func:`write_sample` and filled in by a human.
 
     Returns:
-        Two mappings: publication id to human label, publication id to model label.
+        ``(target, publication_id, human_label, model_label)`` for every filled row.
 
     Raises:
-        ValueError: When a filled label is not one of the four allowed values.
+        ValueError: When a filled label is not one of the four allowed values, or when the target column is
+            missing — a pooled sheet without targets cannot be scored at all, and failing loudly is better than
+            producing one number for two questions.
     """
-    human: dict[str, str] = {}
-    model: dict[str, str] = {}
+    rows: list[tuple[str, str, str, str]] = []
     with path.open(encoding="utf-8", newline="") as handle:
-        for row in csv.DictReader(handle):
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None or "target" not in reader.fieldnames:
+            raise ValueError(
+                "the sheet has no `target` column; regenerate it with `gtaf review-web` — a pooled sheet "
+                "without targets cannot be scored"
+            )
+        for row in reader:
             publication_id = (row.get("publication_id") or "").strip()
             label = (row.get("human_label") or "").strip().lower()
             if not publication_id or not label:
@@ -181,27 +194,44 @@ def read_labels(path: Path) -> tuple[dict[str, str], dict[str, str]]:
                 raise ValueError(
                     f"publication {publication_id}: {label!r} is not one of {', '.join(STANCE_LABELS)}"
                 )
-            human[publication_id] = label
-            model[publication_id] = (row.get("model_label") or "").strip().lower()
-    return human, model
+            rows.append(
+                (
+                    (row.get("target") or "").strip(),
+                    publication_id,
+                    label,
+                    (row.get("model_label") or "").strip().lower(),
+                )
+            )
+    return rows
 
 
 def score(
-    human: dict[str, str], model: dict[str, str], *, min_items: int = 30
-) -> tuple[Agreement, bool]:
-    """Score a review against the model.
+    rows: Sequence[tuple[str, str, str, str]], *, min_items: int = 30
+) -> dict[str, tuple[Agreement, bool]]:
+    """Score a review against the model, per target.
 
     Args:
-        human: Publication id to human label.
-        model: Publication id to model label.
-        min_items: The G-8 sample floor.
+        rows: ``(target, publication_id, human_label, model_label)``.
+        min_items: The G-8 sample floor, applied per target.
 
     Returns:
-        The agreement (which already carries kappa and per-class rows), and whether the floor was met.
+        Target to ``(agreement, floor_met)``. The floor is per target because a mixed sheet answered two
+        questions, and a single aggregate would hide which one failed.
 
     Notes:
         Kappa is reported beside raw agreement: with `neutral` dominating the publication corpus, two labellers
         can agree 80 % of the time while barely beating chance, which is exactly the trap measured in SPEC-016.
     """
-    agreement = compare(human, model)
-    return agreement, len(human) >= min_items
+    grouped: dict[str, dict[str, str]] = {}
+    models: dict[str, dict[str, str]] = {}
+    for target, publication_id, human_label, model_label in rows:
+        grouped.setdefault(target, {})[publication_id] = human_label
+        models.setdefault(target, {})[publication_id] = model_label
+
+    results: dict[str, tuple[Agreement, bool]] = {}
+    for target, human in grouped.items():
+        results[target] = (
+            compare(human, models.get(target, {})),
+            len(human) >= min_items,
+        )
+    return results

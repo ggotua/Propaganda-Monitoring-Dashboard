@@ -693,28 +693,37 @@ class DuckDBRepository:
         ).fetchall()
         return {str(row[0]): str(row[1]) for row in rows}
 
-    def publication_stance_rows(self, target: str) -> tuple[tuple[str, str, str, str, str, float], ...]:
+    def publication_stance_rows(
+        self, target: str, *, prompt_version: str | None = None
+    ) -> tuple[tuple[str, str, str, str, str, float, str], ...]:
         """Return labelled publications for a review sample.
 
         Args:
             target: Actor id.
+            prompt_version: Restrict to one prompt version; None returns every version.
 
         Returns:
-            ``(publication_id, source_id, leaning, title, label, confidence)`` rows, newest first.
+            ``(publication_id, source_id, leaning, title, label, confidence, target)`` rows, newest first.
 
         Notes:
             Only rows the model labelled: a review measures agreement with the model, so an unlabelled
-            publication has nothing to agree with.
+            publication has nothing to agree with. The prompt filter exists because a label written by prompt v2
+            is not comparable with one written by v3 — mixing them would average two different instruments.
         """
-        rows = self._conn.execute(
+        query = (
             "SELECT ps.publication_id, p.source_id, s.leaning, p.title, ps.label, "
-            "coalesce(ps.confidence, 0) "
+            "coalesce(ps.confidence, 0), ps.target "
             "FROM publication_stance ps "
             "JOIN publications p ON p.publication_id = ps.publication_id "
             "JOIN sources s ON s.source_id = p.source_id "
-            "WHERE ps.target = ? ORDER BY p.published_at DESC NULLS LAST, p.fetched_at DESC",
-            [target],
-        ).fetchall()
+            "WHERE ps.target = ?"
+        )
+        parameters: list[object] = [target]
+        if prompt_version is not None:
+            query += " AND ps.prompt_version = ?"
+            parameters.append(prompt_version)
+        query += " ORDER BY p.published_at DESC NULLS LAST, p.fetched_at DESC"
+        rows = self._conn.execute(query, parameters).fetchall()
         return tuple(
             (
                 str(row[0]),
@@ -723,6 +732,7 @@ class DuckDBRepository:
                 str(row[3]),
                 str(row[4]),
                 float(str(row[5])),
+                str(row[6]),
             )
             for row in rows
         )
@@ -985,23 +995,32 @@ class DuckDBRepository:
             raise
         return len(rows)
 
-    def publication_stance_counts(self, target: str) -> tuple[tuple[str, str, str, int], ...]:
+    def publication_stance_counts(
+        self, target: str, *, prompt_version: str | None = None
+    ) -> tuple[tuple[str, str, str, int], ...]:
         """Return label counts for a target grouped by source leaning.
 
         Args:
             target: Actor id.
+            prompt_version: Restrict to one prompt version; None mixes them, which is only safe for a
+                diagnostic.
 
         Returns:
             ``(leaning, source_id, label, count)`` rows.
         """
-        rows = self._conn.execute(
+        query = (
             "SELECT s.leaning, p.source_id, ps.label, count(*) "
             "FROM publication_stance ps "
             "JOIN publications p ON p.publication_id = ps.publication_id "
             "JOIN sources s ON s.source_id = p.source_id "
-            "WHERE ps.target = ? GROUP BY 1, 2, 3 ORDER BY 1, 2, 3",
-            [target],
-        ).fetchall()
+            "WHERE ps.target = ?"
+        )
+        parameters: list[object] = [target]
+        if prompt_version is not None:
+            query += " AND ps.prompt_version = ?"
+            parameters.append(prompt_version)
+        query += " GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"
+        rows = self._conn.execute(query, parameters).fetchall()
         return tuple(
             (str(row[0]), str(row[1]), str(row[2]), _as_int(row[3])) for row in rows
         )

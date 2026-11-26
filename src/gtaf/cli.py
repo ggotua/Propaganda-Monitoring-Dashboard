@@ -1944,9 +1944,9 @@ def _cmd_review_web(
     try:
         repo = DuckDBRepository(conn)
         targets = [item.strip() for item in target.split(",") if item.strip()]
-        pooled: list[tuple[str, str, str, str, str, float]] = []
+        pooled: list[tuple[str, str, str, str, str, float, str]] = []
         for one in targets:
-            rows = repo.publication_stance_rows(one)
+            rows = repo.publication_stance_rows(one, prompt_version=PROMPT_VERSION)
             if not rows:
                 print(
                     f"no stored labels for {one!r}; run stance-web first", file=sys.stderr
@@ -1989,17 +1989,29 @@ def _cmd_score_web(*, csv_path: Path, minimum: int) -> int:
     if not csv_path.exists():
         print(f"{csv_path} does not exist", file=sys.stderr)
         return EXIT_CONFIG
-    human, model = read_labels(csv_path)
-    if not human:
+    try:
+        rows = read_labels(csv_path)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_CONFIG
+    if not rows:
         print("no filled `human_label` rows yet", file=sys.stderr)
         return EXIT_CONFIG
-    agreement, enough = score(human, model, min_items=minimum)
 
-    print(f"{agreement.agree}/{agreement.n} = {agreement.rate:.1%} | Cohen's kappa = {agreement.kappa:.3f}")
-    print(f"\n{'class':11} {'agree':>6} {'total':>6} {'rate':>7}")
-    for class_label, class_agree, class_total in agreement.per_class:
-        print(f"{class_label:11} {class_agree:>6} {class_total:>6} {class_agree / class_total:>6.1%}")
-    print(f"\nsample floor: {agreement.n}/{minimum} — " + ("met" if enough else "NOT met"))
+    results = score(rows, min_items=minimum)
+    for target, (agreement, enough) in sorted(results.items()):
+        print(
+            f"\n{target}: {agreement.agree}/{agreement.n} = {agreement.rate:.1%} | "
+            f"Cohen's kappa = {agreement.kappa:.3f}"
+        )
+        print(f"\n{'class':11} {'agree':>6} {'total':>6} {'rate':>7}")
+        for class_label, class_agree, class_total in agreement.per_class:
+            print(
+                f"{class_label:11} {class_agree:>6} {class_total:>6} {class_agree / class_total:>6.1%}"
+            )
+        print(
+            f"floor: {agreement.n}/{minimum} — " + ("met" if enough else "NOT met")
+        )
     return EXIT_OK
 
 

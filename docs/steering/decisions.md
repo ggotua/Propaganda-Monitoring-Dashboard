@@ -1395,3 +1395,52 @@ Consequences: the project can now use Imedi web data as a *stated* proxy for its
 the correlation printed next to the figure. Every other channel's web data stays "what the site published".
 Revisit if: a second window or a larger sample moves rho below 0.7, which would withdraw the licence.
 
+---
+
+## D-037: The publication G-8 failed on `critical`, and the review sheet was defective
+
+Status: Accepted (2026-11-26). First human review of publication stance.
+
+Context: a human reviewer labelled 30 publications against the model. Two things came out of it, and the first
+is about my instrument, not the model.
+
+**The sheet did not say which target each row was labelled for.** The sample pooled Kobakhidze and Ivanishvili,
+and `write_sample` omitted the `target` column, so the reviewer had to assume one. The reported 21/30 = 70 %
+therefore mixes two questions: rows whose stored label was about Ivanishvili were scored against a human
+labelling of Kobakhidze. **70 % is not a G-8 figure and is not recorded as one.**
+
+What the review did establish, and what was done about each:
+
+| Finding | Status |
+|---|---|
+| `critical` assigned from the article's overall tone, not its target: 4 of 5 critical labels sat on pieces attacking Ivanishvili or "the regime" that never named Kobakhidze | **Fixed in prompt v3** — target pinning, such text is `unclear` |
+| Self-praise in reported speech labelled inconsistently (`supportive` once, `neutral` twice for the same genre) | **Fixed in prompt v3** — measured: `supportive` 1 → 0 on the sample |
+| Model misses criticism actually aimed at Kobakhidze: human found 4 in 30, model caught 1 (later 0) | **Open** — v3 did not fix it |
+| Mild support goes uncaught (a defence of his refusal of Western demands labelled `unclear`) | **Open** |
+| "Check whether the model receives the title" | **Checked: it does** — `text = f"{title}. {excerpt}"` in `stance_web.py`. The row was seen and judged `neutral`, which is a judgement, not a missing input |
+
+Decisions:
+1. **The review sheet carries a per-row `target`**, and scoring is **per target** with its own floor. A pooled
+   sheet without targets is now refused rather than scored.
+2. **Prompt v3** adds target pinning and the reported-self-praise rule (see `STANCE-RULES.md` §0).
+3. **`human_label` was not the problem and stays empty by default** — the model column sits beside it; the defect
+   was the missing target, not a leading label.
+4. **G-8 for the publication corpus is recorded as FAILED**, on the class that matters. The model does not label
+   as `critical` the criticism a human reader finds in the opposition outlet's coverage of the prime minister.
+   Treat publication stance as indicative, never as a validated measurement.
+
+Rejected:
+- **Report 70 % as the web G-8** — two questions were averaged into one number, and the sheet that produced it
+  could not be scored correctly.
+- **Count the four Ivanishvili-attack labels as correct** — under a Kobakhidze target they are wrong; under an
+  Ivanishvili target they may be right. Without the target column the row cannot be judged at all, which is why
+  the instrument, not the model, was the first thing to fix.
+- **Treat prompt v3 as the fix for under-detection** — measured: Kobakhidze `critical` remains 0 in the
+  opposition outlet after v3. The rule that moved labels was the target pin, which makes the model *more*
+  conservative, not more sensitive.
+
+Consequences: the web corpus's stance numbers must be published with "model-labelled, G-8 failed" attached.
+Improving implicature detection needs either a stronger model on this task or a prompt built around quoted
+questions and headline framing, and that is a separate experiment. Revisit if: the re-run review on the
+target-aware sheet reaches 0.80 overall with `critical` above 50 %.
+

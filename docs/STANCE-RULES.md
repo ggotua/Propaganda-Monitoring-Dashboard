@@ -1,8 +1,28 @@
 # STANCE-RULES — how to label when the text is ambiguous
 
-Status: in force from 2026-11-21. Written because the G-8 review found the same content receiving
-different labels (#11 `neutral`, #13 `critical`, #36 `unclear` for the same list of court cases), and
-because two boundary questions recurred: **reported speech** and **blame aimed at a person's government**.
+Status: in force from 2026-11-21, extended 2026-11-26 (stance-v3) after a publication review.
+
+## 0. What stance-v3 added
+
+Three rules were added to the prompt, not just to this document, because the labels the model produces are what
+these rules govern.
+
+**Target pinning.** Evaluate stance toward the named person only. An attack on Ivanishvili, on Georgian Dream or
+on "the regime" is `unclear` unless the text names the target or clearly implicates them. A review found four
+`critical` labels on pieces that attacked Ivanishvili and never mentioned Kobakhidze.
+
+**Reported self-praise is neutral.** When the outlet relays the target's own words about their own record, that
+is `neutral` — it is the politician's self-assessment, not the outlet's stance. Only the outlet's own
+contribution (a headline, an aside, a tone) is evaluated. A review found one self-praise headline labelled
+`supportive` and two of the same kind labelled `neutral`.
+
+**Someone else is not the target.** An attack on a relative, the party, a minister acting in the target's name,
+ambassadors or another person is `unclear` — not `critical`, and not `neutral`.
+
+Measured effect of v3: `supportive` on the Kobakhidze sample 1 → 0, and Ivanishvili `critical` 7 → 6 as
+regime-attacks moved to `unclear`. Under-detection did **not** improve: TV Pirveli's Kobakhidze coverage still
+gets zero `critical` labels where a human found four in thirty (D-037).
+
 
 The labels describe **how the segment frames the named person**, not what anyone believes, and not what is
 true. Every rule below exists to make two reviewers independently reach the same label.
