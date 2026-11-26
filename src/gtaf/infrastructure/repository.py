@@ -742,15 +742,32 @@ class DuckDBRepository:
         """
         self._conn.execute("BEGIN TRANSACTION")
         try:
-            self._conn.execute(
-                "DELETE FROM publications WHERE publication_id = ?", [row[0]]
-            )
-            self._conn.execute(
-                "INSERT INTO publications (publication_id, source_id, url, title, published_at, "
-                "programme, excerpt, body_hash, body_chars, fetched_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                list(row),
-            )
+            existing = self._conn.execute(
+                "SELECT 1 FROM publications WHERE publication_id = ?", [row[0]]
+            ).fetchone()
+            if existing:
+                # A plain UPDATE, not ON CONFLICT DO UPDATE: DuckDB implements the latter as delete+insert,
+                # and `publication_stance` references this row, so it fails with a foreign-key error
+                # (measured 2026-11-26). The key never changes here, so the reference stays valid.
+                self._conn.execute(
+                    "UPDATE publications SET "
+                    "title = ?, "
+                    "published_at = coalesce(?, published_at), "
+                    "programme = coalesce(?, programme), "
+                    "excerpt = ?, "
+                    "body_hash = ?, "
+                    "body_chars = ?, "
+                    "fetched_at = ? "
+                    "WHERE publication_id = ?",
+                    [row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[0]],
+                )
+            else:
+                self._conn.execute(
+                    "INSERT INTO publications (publication_id, source_id, url, title, published_at, "
+                    "programme, excerpt, body_hash, body_chars, fetched_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    list(row),
+                )
             self._conn.execute("COMMIT")
         except Exception:
             self._conn.execute("ROLLBACK")

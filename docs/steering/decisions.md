@@ -1284,3 +1284,55 @@ weeks. The cost is a new obligation: every published number must name its corpus
 corpus-provenance line. Revisit if: YouTube unblocks and broadcast grows, or the concordance study shows the
 two corpora disagree so much that they must be reported as separate products.
 
+---
+
+## D-035: Publication stance is labelled on the excerpt, and the labels are length-sensitive
+
+Status: Accepted (2026-11-26). Measured on ~800 stored publications.
+
+Context: the web corpus reached 797 publications (400 TV Pirveli, 393 Imedi, 4 via listing RSS) and the stance
+pipeline ran on four actors. Two results conflict, and the conflict is the finding:
+
+| Actor | Imedi (pro-government) | TV Pirveli (opposition) |
+|---|---|---|
+| Ivanishvili | critical 1 | **critical 4, unclear 5** |
+| Kobakhidze (PM) | supportive 1, neutral 5 | neutral 16, unclear 7, **critical 0** |
+| Bochorishvili (FM) | supportive 2, neutral 22 | neutral 2, unclear 1 |
+
+So the model **does** produce `critical` for a government-side figure when the text is polemical (Ivanishvili,
+4 of 9 in the opposition outlet) — which answers the question that motivated the web corpus. It produces none
+for the prime minister in the same outlet, which at first looked like the same blindness we were testing for.
+
+Reading the texts says otherwise. The TV Pirveli articles about Kobakhidze are **reports of what he said**
+(`"კაცურიც არ არის ეს ყველაფერი"`, `კობახიძე ადასტურებს…`, `…იხუმრა`). An outlet that quotes a politician
+without editorialising is not criticising him, and `neutral` is a defensible label. The outlet's own polemic
+appears in other pieces — the Ivanishvili ones — and there the model found it.
+
+One methodological check was run: for six articles labelled `neutral`, the full body (up to 3,000 characters)
+was fetched and relabelled. **All six moved to `unclear`** — not to `critical`. More text made the model less
+decisive, not more critical, because a full article contains other speakers' statements and the model stops
+being sure whose stance it is reading.
+
+Decision:
+1. **Publication stance is labelled on title + a 400-character excerpt.** It is what the pipeline stores, it
+   keeps cost predictable, and the full-text experiment shows no gain in the direction that matters.
+2. **The length sensitivity is recorded as a known weakness.** A label is a statement about the stored text,
+   not about "the article"; where an analysis needs the full body, it must say so and re-measure.
+3. **`unclear` on publications is not treated as evidence of neutrality.** With a 400-character input the model
+   produces `unclear` for 7 of 23 PM articles; a share that large is a boundary problem, matching the 66.7 %
+   cross-vendor disagreement on this class measured earlier (SPEC-016).
+
+Rejected:
+- **Store the full body to label it** — the experiment shows it degrades the label to `unclear`, and it would
+  mean storing full article text, which D-034 avoids on copyright grounds.
+- **Report the PM's zero `critical` as model blindness** — the texts do not support it; that would be a
+  conclusion the data does not carry.
+- **Merge publication and broadcast counts into one stance share** — forbidden by D-034, and the two now
+  visibly differ in kind.
+
+Consequences: publication stance is usable for **cross-leaning comparison within the web corpus**, and it is
+not interchangeable with broadcast stance. The Ivanishvili result is the first evidence that the model can see
+criticism of the incumbent side; the PM result is a reminder that "no criticism labelled" usually means "no
+criticism written". Revisit if: a human labels 30 web publications to give the publication stance its own G-8
+figure, or a longer excerpt shows a different pattern.
+
