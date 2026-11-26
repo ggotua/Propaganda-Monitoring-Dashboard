@@ -127,13 +127,44 @@ def split_statements(sql: str) -> list[str]:
         Non-empty statements, with surrounding whitespace removed.
 
     Notes:
-        Full-line comments are dropped **before** splitting, because a comment may legitimately
-        contain a semicolon or a quote and would otherwise be cut into a fragment that looks like
-        SQL. Trailing comments after a statement are not supported; migration files put comments on
-        their own lines.
+        Two things make a naive ``sql.split(";")`` wrong, and both were measured:
+
+        1. **Comments** may contain a semicolon or a quote, so full-line comments are dropped first.
+        2. **String literals** may contain a semicolon. Migration 008 seeds a leaning note reading
+           "…assigned by the project owner; on the public record", and splitting there produced
+           ``unterminated string literal`` on a migration that was otherwise valid.
+
+        The state machine below tracks single quotes, including SQL's doubled-quote escape, so a semicolon
+        inside a literal stays inside it.
     """
     body = "\n".join(line for line in sql.splitlines() if not line.lstrip().startswith("--"))
-    return [statement.strip() for statement in body.split(";") if statement.strip()]
+
+    statements: list[str] = []
+    current: list[str] = []
+    in_quote = False
+    index = 0
+    while index < len(body):
+        character = body[index]
+        if character == "'":
+            if in_quote and body[index + 1 : index + 2] == "'":
+                current.append("''")
+                index += 2
+                continue
+            in_quote = not in_quote
+            current.append(character)
+        elif character == ";" and not in_quote:
+            statement = "".join(current).strip()
+            if statement:
+                statements.append(statement)
+            current = []
+        else:
+            current.append(character)
+        index += 1
+
+    tail = "".join(current).strip()
+    if tail:
+        statements.append(tail)
+    return statements
 
 
 def read_schema_version(conn: SqlConnection) -> str | None:

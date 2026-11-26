@@ -130,3 +130,22 @@ def test_split_statements_ignores_semicolons_inside_comments() -> None:
     """Regression: a comment containing a semicolon must not become a fake statement."""
     sql = '-- a comment with a ; and a "quote\nSELECT 1;\n-- another ; comment\nSELECT 2;'
     assert split_statements(sql) == ["SELECT 1", "SELECT 2"]
+
+
+def test_split_statements_ignores_semicolons_inside_string_literals() -> None:
+    """Regression, measured 2026-11-26: migration 008 seeded a note containing ";", and the naive split
+    produced `unterminated string literal` on a valid migration."""
+    sql = "INSERT INTO t (a, b) VALUES ('x', 'one; two');\nSELECT 2;"
+    assert split_statements(sql) == [
+        "INSERT INTO t (a, b) VALUES ('x', 'one; two')",
+        "SELECT 2",
+    ]
+
+
+def test_split_statements_handles_a_doubled_quote() -> None:
+    """SQL escapes a quote by doubling it; the state machine must not close early."""
+    sql = "INSERT INTO t VALUES ('it''s here; really');\nSELECT 1;"
+    assert split_statements(sql) == [
+        "INSERT INTO t VALUES ('it''s here; really')",
+        "SELECT 1",
+    ]
