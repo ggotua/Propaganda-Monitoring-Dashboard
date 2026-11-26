@@ -704,7 +704,7 @@ class DuckDBRepository:
         """
         query = (
             "SELECT source_id, name_en, leaning, base_url, access_mode, kind, listing_url, "
-            "active, leaning_note FROM sources"
+            "active, leaning_note, sitemap_url FROM sources"
         )
         if active_only:
             query += " WHERE active"
@@ -721,6 +721,7 @@ class DuckDBRepository:
                 listing_url=str(row[6]),
                 active=bool(row[7]),
                 leaning_note=str(row[8]) if row[8] is not None else None,
+                sitemap_url=str(row[9]) if row[9] is not None else None,
             )
             for row in rows
         )
@@ -755,6 +756,114 @@ class DuckDBRepository:
             self._conn.execute("ROLLBACK")
             raise
         return 1
+
+    def list_publications(
+        self, *, source_id: str | None = None, limit: int = 500
+    ) -> tuple[tuple[str, str, str, str, str], ...]:
+        """Return stored publications with their source leaning.
+
+        Args:
+            source_id: Restrict to one source, or None for all.
+            limit: Maximum rows.
+
+        Returns:
+            ``(publication_id, source_id, title, excerpt, leaning)`` ordered by publication time.
+        """
+        query = (
+            "SELECT p.publication_id, p.source_id, p.title, coalesce(p.excerpt, ''), s.leaning "
+            "FROM publications p JOIN sources s ON s.source_id = p.source_id"
+        )
+        parameters: list[object] = []
+        if source_id is not None:
+            query += " WHERE p.source_id = ?"
+            parameters.append(source_id)
+        query += (
+            " ORDER BY coalesce(p.published_at, p.fetched_at) DESC LIMIT ?"
+        )
+        parameters.append(limit)
+        rows = self._conn.execute(query, parameters).fetchall()
+        return tuple(
+            (str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4])) for row in rows
+        )
+
+    def store_publication_stance(
+        self,
+        rows: Sequence[tuple[str, str, str, float, str, str, str, bool]],
+        *,
+        prompt_version: str,
+    ) -> int:
+        """Write stance labels for publications.
+
+        Args:
+            rows: ``(publication_id, target, label, confidence, model, rationale, quote, verified)``.
+            prompt_version: Prompt that produced the labels.
+
+        Returns:
+            Number of rows written.
+        """
+        if not rows:
+            return 0
+        moment = _utc_now()
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            for (
+                publication_id,
+                target,
+                label,
+                confidence,
+                model,
+                rationale,
+                quote,
+                verified,
+            ) in rows:
+                self._conn.execute(
+                    "DELETE FROM publication_stance WHERE publication_id = ? AND target = ? "
+                    "AND model = ? AND prompt_version = ?",
+                    [publication_id, target, model, prompt_version],
+                )
+                self._conn.execute(
+                    "INSERT INTO publication_stance (publication_id, target, label, confidence, "
+                    "model, prompt_version, quote, quote_verified, rationale, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        publication_id,
+                        target,
+                        label,
+                        confidence,
+                        model,
+                        prompt_version,
+                        quote,
+                        verified,
+                        rationale,
+                        moment,
+                    ],
+                )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+        return len(rows)
+
+    def publication_stance_counts(self, target: str) -> tuple[tuple[str, str, str, int], ...]:
+        """Return label counts for a target grouped by source leaning.
+
+        Args:
+            target: Actor id.
+
+        Returns:
+            ``(leaning, source_id, label, count)`` rows.
+        """
+        rows = self._conn.execute(
+            "SELECT s.leaning, p.source_id, ps.label, count(*) "
+            "FROM publication_stance ps "
+            "JOIN publications p ON p.publication_id = ps.publication_id "
+            "JOIN sources s ON s.source_id = p.source_id "
+            "WHERE ps.target = ? GROUP BY 1, 2, 3 ORDER BY 1, 2, 3",
+            [target],
+        ).fetchall()
+        return tuple(
+            (str(row[0]), str(row[1]), str(row[2]), _as_int(row[3])) for row in rows
+        )
 
     def latest_topics_run(self) -> str | None:
         """Return the newest run that produced topics.

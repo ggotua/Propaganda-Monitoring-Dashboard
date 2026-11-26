@@ -61,6 +61,7 @@ class WebSource:
     listing_url: str
     active: bool = True
     leaning_note: str | None = None
+    sitemap_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,7 +199,8 @@ def parse_listing(
         html_body: Page body.
         base_url: Origin for relative links.
         link_pattern: Regular expression the href must match.
-        title_tag: Tag that holds the headline inside the card.
+        title_tag: Preferred tag for the headline; any ``h1`` to ``h4`` is accepted as a fallback, then the
+            anchor's own text.
 
     Returns:
         Items, de-duplicated by URL and in page order.
@@ -218,15 +220,19 @@ def parse_listing(
         if url in seen:
             continue
         body = match.group("body")
-        title_match = re.search(rf"<{title_tag}[^>]*>(.*?)</{title_tag}>", body, re.DOTALL) or re.search(
-            r"<h[23][^>]*>(.*?)</h[23]>", body, re.DOTALL
+        title_match = (
+            re.search(rf"<{title_tag}[^>]*>(.*?)</{title_tag}>", body, re.DOTALL)
+            or re.search(r"<h[1-4][^>]*>(.*?)</h[1-4]>", body, re.DOTALL)
+            or re.search(r"<p[^>]*>(.*?)</p>", body, re.DOTALL)
         )
         title = clean_text(title_match.group(1)) if title_match else clean_text(body)
         if not title or len(title) < 12:
             # A card whose text is a thumbnail or a nav label is not an article.
             continue
         seen.add(url)
-        items.append(RawItem(url=url, title=title))
+        items.append(
+            RawItem(url=url, title=title, published_at=parse_ka_date(clean_text(body)))
+        )
     return tuple(items)
 
 
@@ -340,7 +346,32 @@ def looks_like_article(url: str) -> bool:
     from urllib.parse import urlparse
 
     path = urlparse(url).path
-    return re.search(r"/\d+-", path) is not None
+    # Two shapes measure the same thing: TV Pirveli writes `/139842-slug`, Imedi writes `/484181/slug`.
+    return re.search(r"/\d{3,}(?:-|/)", path) is not None
+
+
+def newest_first(urls: Iterable[str], *, limit: int) -> tuple[str, ...]:
+    """Order article URLs newest-first by their embedded id.
+
+    Args:
+        urls: Article URLs.
+        limit: Maximum to keep.
+
+    Returns:
+        The URLs with the highest numeric id, newest first.
+
+    Notes:
+        Both CMSs encode a monotonic id in the path (``/ka/siaxleebi/politika/139842-…``,
+        ``/ge/politika/484181/…``). Sorting by it is a cheap approximation of recency that needs no per-site
+        pagination logic — and a backfill of "the last N articles" is exactly what a comparison needs.
+    """
+    numbered: list[tuple[int, str]] = []
+    for url in urls:
+        match = re.search(r"/(\d{3,})(?:-|/)", url)
+        if match:
+            numbered.append((int(match.group(1)), url))
+    numbered.sort(key=lambda pair: pair[0], reverse=True)
+    return tuple(url for _id, url in numbered[:limit])
 
 
 def dedupe_by_title(items: Iterable[RawItem]) -> tuple[RawItem, ...]:

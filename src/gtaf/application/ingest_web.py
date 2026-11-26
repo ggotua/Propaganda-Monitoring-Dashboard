@@ -19,6 +19,7 @@ from gtaf.domain.web import (
     dedupe_by_title,
     extract_excerpt,
     looks_like_article,
+    newest_first,
     parse_listing,
     parse_rss,
     parse_sitemap,
@@ -78,21 +79,33 @@ class IngestResult:
     with_text: int
 
 
-def discover(source: WebSource, fetcher: Fetcher, *, limit: int) -> tuple[RawItem, ...]:
+def discover(
+    source: WebSource, fetcher: Fetcher, *, limit: int, sitemap: bool = False
+) -> tuple[RawItem, ...]:
     """Find candidate publications for a source.
 
     Args:
         source: Configured source.
         fetcher: Page fetcher.
         limit: Maximum items.
+        sitemap: Use the source's sitemap for a backfill instead of its listing page.
 
     Returns:
         Items, de-duplicated by title.
 
     Notes:
-        The sitemap path exists because one source's listing is JavaScript-driven: scraping the listing would
-        yield an empty shell and a nightly "0 articles" that looks like an outage.
+        The sitemap path exists for two reasons: one source's listing is JavaScript-driven, and a listing page
+        holds ~25 articles — enough for a nightly delta, not for a comparison between channels.
     """
+    if sitemap and source.sitemap_url:
+        if not fetcher.allowed(source.sitemap_url):
+            return ()
+        body = fetcher.get(source.sitemap_url, timeout=60)
+        urls = parse_sitemap(body, base_url=source.base_url, pattern=r".")
+        articles = [url for url in urls if looks_like_article(url)]
+        chosen = newest_first(articles, limit=limit)
+        return tuple(RawItem(url=url, title="") for url in chosen)
+
     if not fetcher.allowed(source.listing_url):
         return ()
 
@@ -119,6 +132,7 @@ def ingest_source(
     *,
     limit: int = 20,
     now: datetime | None = None,
+    sitemap: bool = False,
 ) -> IngestResult:
     """Ingest one source.
 
@@ -137,7 +151,7 @@ def ingest_source(
         permission decision recorded in the database, not a performance tweak.
     """
     moment = now or datetime.now(UTC).replace(tzinfo=None)
-    items = discover(source, fetcher, limit=limit)
+    items = discover(source, fetcher, limit=limit, sitemap=sitemap)
 
     stored = 0
     blocked = 0
@@ -220,6 +234,7 @@ def ingest_all(
     store: PublicationStore,
     *,
     limit: int = 20,
+    sitemap: bool = False,
 ) -> tuple[IngestResult, ...]:
     """Ingest every active source.
 
@@ -228,10 +243,12 @@ def ingest_all(
         fetcher: Page fetcher.
         store: Publication persistence.
         limit: Maximum publications per source.
+        sitemap: Backfill from each source's sitemap.
 
     Returns:
         One result per source.
     """
     return tuple(
-        ingest_source(source, fetcher, store, limit=limit) for source in sources
+        ingest_source(source, fetcher, store, limit=limit, sitemap=sitemap)
+        for source in sources
     )

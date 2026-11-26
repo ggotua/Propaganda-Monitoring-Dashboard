@@ -55,6 +55,7 @@ from gtaf.application.schedule import (
 from gtaf.application.segment import segment_video
 from gtaf.application.segment_drift import segment_video_drift
 from gtaf.application.stance import label_stance, review_sample
+from gtaf.application.stance_web import label_publication_stance
 from gtaf.application.text import sentences_for_video
 from gtaf.application.timeline import actor_timeline, topic_timeline
 from gtaf.application.topic_labels import label_topics
@@ -340,6 +341,19 @@ def _build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--source", default=None, help="one source id, or all active")
     ingest.add_argument("--limit", type=int, default=20)
     ingest.add_argument("--delay", type=float, default=1.0, help="seconds between requests")
+    ingest.add_argument(
+        "--sitemap", action="store_true", help="backfill from the source sitemap (newest first)"
+    )
+
+    stance_web = sub.add_parser("stance-web", help="label stance on web publications (SPEC-018)")
+    stance_web.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    stance_web.add_argument("--config", type=Path, default=Path("config/actors.yaml"))
+    stance_web.add_argument("--env-file", type=Path, default=Path(".env"))
+    stance_web.add_argument("--target", required=True)
+    stance_web.add_argument("--source", default=None, help="restrict to one source id")
+    stance_web.add_argument("--limit", type=int, default=60)
+    stance_web.add_argument("--provider", default="deepseek")
+    stance_web.add_argument("--budget", type=float, default=None)
 
     return parser
 
@@ -1637,7 +1651,7 @@ def _cmd_probe(
 
 
 def _cmd_ingest_web(
-    *, db_path: Path, source_id: str | None, limit: int, delay: float
+    *, db_path: Path, source_id: str | None, limit: int, delay: float, sitemap: bool = False
 ) -> int:
     """Ingest web publications (SPEC-018).
 
@@ -1646,6 +1660,7 @@ def _cmd_ingest_web(
         source_id: One source to ingest, or None for all active sources.
         limit: Maximum publications per source.
         delay: Seconds between requests to the same origin.
+        sitemap: Backfill from each source's sitemap instead of its listing page.
 
     Returns:
         Process exit code.
@@ -1660,7 +1675,7 @@ def _cmd_ingest_web(
                 print(f"unknown source {source_id!r}", file=sys.stderr)
                 return EXIT_CONFIG
         results = ingest_all(
-            sources, BrowserFetcher(delay_s=delay), repo, limit=limit
+            sources, BrowserFetcher(delay_s=delay), repo, limit=limit, sitemap=sitemap
         )
     finally:
         conn.close()
@@ -1676,6 +1691,77 @@ def _cmd_ingest_web(
         )
     print(
         "\nPublications are a separate corpus: counts here are never added to broadcast segments (D-034)."
+    )
+    return EXIT_OK
+
+
+def _cmd_stance_web(
+    *,
+    db_path: Path,
+    config_path: Path,
+    env_file: Path,
+    target: str,
+    limit: int,
+    provider: str,
+    budget: float | None,
+    source_id: str | None,
+) -> int:
+    """Label stance toward an actor across web publications (SPEC-018).
+
+    Args:
+        db_path: Database file, read-write.
+        config_path: Actor dictionary.
+        env_file: Path to `.env`.
+        target: Actor id, English or Georgian name.
+        limit: Maximum publications to label.
+        provider: Provider key.
+        budget: Monthly cap in USD, or None.
+        source_id: Restrict to one source, or None.
+
+    Returns:
+        Process exit code.
+    """
+    actors = load_actor_config(config_path)
+    try:
+        actor = _find_actor(actors, target)
+    except KeyError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_CONFIG
+
+    conn = connect(db_path, read_only=False)
+    try:
+        repo = DuckDBRepository(conn)
+        gateway = _gateway(conn, env_file, budget)
+        result = label_publication_stance(
+            gateway,
+            repo,
+            repo,
+            actor=actor,
+            provider=provider,
+            limit=limit,
+            source_id=source_id,
+        )
+    finally:
+        conn.close()
+
+    print(
+        f"{actor.en}: labelled {result.labelled} publication(s) | unparsable {result.unparsable} | "
+        f"cost ${result.cost_usd:.6f}"
+    )
+    if not result.by_source:
+        print("no publications mentioning the target; nothing to compare")
+        return EXIT_OK
+
+    print(f"\n{'source':12} {'leaning':15} {'supportive':>10} {'critical':>9} {'neutral':>8} {'unclear':>8}")
+    for source, leaning, counts in result.by_source:
+        print(
+            f"{source:12} {leaning:15} {counts['supportive']:>10} {counts['critical']:>9} "
+            f"{counts['neutral']:>8} {counts['unclear']:>8}"
+        )
+    print(
+        "\nThis is the web corpus (D-034), not airtime. The comparison that matters here is between "
+        "leanings: if `critical` stays near zero in the opposition outlet, the model cannot see "
+        "criticism of the incumbent."
     )
     return EXIT_OK
 
@@ -1747,9 +1833,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "stance-web":
+            return _cmd_stance_web(
+                db_path=args.db,
+                config_path=args.config,
+                env_file=args.env_file,
+                target=args.target,
+                limit=args.limit,
+                provider=args.provider,
+                budget=args.budget,
+                source_id=args.source,
+            )
         if args.command == "ingest-web":
             return _cmd_ingest_web(
-                db_path=args.db, source_id=args.source, limit=args.limit, delay=args.delay
+                db_path=args.db,
+                source_id=args.source,
+                limit=args.limit,
+                delay=args.delay,
+                sitemap=args.sitemap,
             )
         if args.command == "probe":
             return _cmd_probe(
