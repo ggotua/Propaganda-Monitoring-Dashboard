@@ -37,6 +37,33 @@ KA_MONTHS = {
 
 
 @dataclass(frozen=True, slots=True)
+class WebSource:
+    """A configured web source.
+
+    Attributes:
+        source_id: Stable key.
+        name_en: Display name.
+        leaning: ``pro-government``, ``opposition`` or ``independent`` — an editorial judgement stored as data.
+        base_url: Origin.
+        access_mode: ``full``, ``headline`` or ``archive``; controls whether article pages are requested.
+        kind: Discovery mechanism: ``rss``, ``listing`` or ``sitemap``.
+        listing_url: Page or feed used for discovery.
+        active: Whether the source takes part in a run.
+        leaning_note: Who assigned the leaning and on what basis.
+    """
+
+    source_id: str
+    name_en: str
+    leaning: str
+    base_url: str
+    access_mode: str
+    kind: str
+    listing_url: str
+    active: bool = True
+    leaning_note: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class RawItem:
     """One discovered publication before storage.
 
@@ -178,8 +205,11 @@ def parse_listing(
     """
     items: list[RawItem] = []
     seen: set[str] = set()
+    # The caller's pattern is wrapped in a non-capturing group: it may contain an alternation, and without
+    # the group the `|` splits the whole href expression instead of the pattern (measured 2026-11-26, when
+    # `/ka/siaxleebi/|/ge/` silently matched nothing).
     for match in re.finditer(
-        rf'<a[^>]+href="(?P<href>[^"]*{link_pattern}[^"]*)"[^>]*>(?P<body>.*?)</a>',
+        rf'<a[^>]+href="(?P<href>[^"]*(?:{link_pattern})[^"]*)"[^>]*>(?P<body>.*?)</a>',
         html_body,
         re.DOTALL,
     ):
@@ -198,6 +228,41 @@ def parse_listing(
         seen.add(url)
         items.append(RawItem(url=url, title=title))
     return tuple(items)
+
+
+# Category words that appear together in a site's navigation and almost never together in a sentence.
+NAV_TOKENS = frozenset(
+    {
+        "სიახლეები",
+        "პოლიტიკა",
+        "საზოგადოება",
+        "კრიმინალი",
+        "მსოფლიო",
+        "სპორტი",
+        "ეკონომიკა",
+        "კულტურა",
+        "ტექნოლოგიები",
+        "ტაბლოიდი",
+        "გადაცემები",
+    }
+)
+
+
+def _is_navigation(text: str) -> bool:
+    """Return True when a paragraph is the site menu rather than prose.
+
+    Args:
+        text: Paragraph text.
+
+    Returns:
+        True when at least three category words appear in it.
+
+    Notes:
+        Measured 2026-11-26: requiring sentence punctuation was not enough, because the menu paragraph carried
+        a separator mark; the excerpt of every publication began with "სიახლეები პოლიტიკა …".
+    """
+    hits = sum(1 for token in NAV_TOKENS if token in text)
+    return hits >= 3
 
 
 def extract_excerpt(page: str, *, max_chars: int = 400) -> str:
@@ -221,6 +286,7 @@ def extract_excerpt(page: str, *, max_chars: int = 400) -> str:
         text
         for text in paragraphs
         if len(text) > 60
+        and not _is_navigation(text)
         # A category menu renders as one long paragraph of capitalised words with no sentence
         # punctuation. Requiring punctuation is crude, but it is exactly the difference between
         # "სიახლეები პოლიტიკა საზოგადოება" and a sentence, and it needs no vocabulary list.
@@ -255,6 +321,26 @@ def publication_id(source_id: str, url: str) -> str:
         Deterministic id, so re-ingesting updates rather than duplicates.
     """
     return hashlib.sha256(f"{source_id}\x1f{url}".encode()).hexdigest()[:32]
+
+
+def looks_like_article(url: str) -> bool:
+    """Return True when a URL points at an article rather than a section.
+
+    Args:
+        url: Absolute URL.
+
+    Returns:
+        True when a path segment begins with digits, which is how these CMSs name articles
+        (``/ka/siaxleebi/politika/139842-slug``).
+
+    Notes:
+        Measured 2026-11-26: the section page also links to sibling sections (``/ka/siaxleebi/teqnologiebi``),
+        and those were being stored as publications with a category name as their title.
+    """
+    from urllib.parse import urlparse
+
+    path = urlparse(url).path
+    return re.search(r"/\d+-", path) is not None
 
 
 def dedupe_by_title(items: Iterable[RawItem]) -> tuple[RawItem, ...]:

@@ -17,6 +17,7 @@ from gtaf.domain.collector import CaptionCue
 from gtaf.domain.models import Channel, Programme, Video
 from gtaf.domain.segment import SegmentDraft
 from gtaf.domain.topics import TopicAssignment, TopicSummary
+from gtaf.domain.web import WebSource
 
 
 def _utc_now() -> datetime:
@@ -691,6 +692,69 @@ class DuckDBRepository:
             [validator_model],
         ).fetchall()
         return {str(row[0]): str(row[1]) for row in rows}
+
+    def list_web_sources(self, *, active_only: bool = True) -> tuple[WebSource, ...]:
+        """Return configured web sources.
+
+        Args:
+            active_only: Restrict to sources taking part in runs.
+
+        Returns:
+            Sources ordered by id.
+        """
+        query = (
+            "SELECT source_id, name_en, leaning, base_url, access_mode, kind, listing_url, "
+            "active, leaning_note FROM sources"
+        )
+        if active_only:
+            query += " WHERE active"
+        query += " ORDER BY source_id"
+        rows = self._conn.execute(query).fetchall()
+        return tuple(
+            WebSource(
+                source_id=str(row[0]),
+                name_en=str(row[1]),
+                leaning=str(row[2]),
+                base_url=str(row[3]),
+                access_mode=str(row[4]),
+                kind=str(row[5]),
+                listing_url=str(row[6]),
+                active=bool(row[7]),
+                leaning_note=str(row[8]) if row[8] is not None else None,
+            )
+            for row in rows
+        )
+
+    def upsert_publication(self, row: Sequence[object]) -> int:
+        """Insert or update one publication.
+
+        Args:
+            row: ``(publication_id, source_id, url, title, published_at, programme, excerpt, body_hash,
+                body_chars, fetched_at)``.
+
+        Returns:
+            Number of rows written.
+
+        Notes:
+            The update path exists so a re-fetch refreshes the title or excerpt without creating a second row;
+            a publication's identity is its URL within its source.
+        """
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            self._conn.execute(
+                "DELETE FROM publications WHERE publication_id = ?", [row[0]]
+            )
+            self._conn.execute(
+                "INSERT INTO publications (publication_id, source_id, url, title, published_at, "
+                "programme, excerpt, body_hash, body_chars, fetched_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                list(row),
+            )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+        return 1
 
     def latest_topics_run(self) -> str | None:
         """Return the newest run that produced topics.

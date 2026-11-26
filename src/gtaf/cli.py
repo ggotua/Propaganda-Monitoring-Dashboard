@@ -37,6 +37,7 @@ from gtaf.application.collect import (
     run_collection,
 )
 from gtaf.application.config import ConfigError
+from gtaf.application.ingest_web import ingest_all
 from gtaf.application.initialize import (
     SchemaVersionError,
     migrate_database,
@@ -91,6 +92,7 @@ from gtaf.infrastructure.raw_store import FileRawStore
 from gtaf.infrastructure.repository import DuckDBRepository
 from gtaf.infrastructure.topics_bertopic import DEFAULT_MODEL as DEFAULT_TOPIC_MODEL
 from gtaf.infrastructure.topics_bertopic import BertopicEngine
+from gtaf.infrastructure.web_fetch import BrowserFetcher
 from gtaf.infrastructure.youtube import YtDlpSource, list_uploads_rss
 from gtaf.presentation.report_html import render_html
 
@@ -332,6 +334,12 @@ def _build_parser() -> argparse.ArgumentParser:
     probe.add_argument(
         "--cookies", type=Path, default=None, help="Netscape cookies.txt from a signed-in browser"
     )
+
+    ingest = sub.add_parser("ingest-web", help="ingest web publications (SPEC-018)")
+    ingest.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    ingest.add_argument("--source", default=None, help="one source id, or all active")
+    ingest.add_argument("--limit", type=int, default=20)
+    ingest.add_argument("--delay", type=float, default=1.0, help="seconds between requests")
 
     return parser
 
@@ -1628,6 +1636,50 @@ def _cmd_probe(
     return EXIT_OK
 
 
+def _cmd_ingest_web(
+    *, db_path: Path, source_id: str | None, limit: int, delay: float
+) -> int:
+    """Ingest web publications (SPEC-018).
+
+    Args:
+        db_path: Database file, opened read-write.
+        source_id: One source to ingest, or None for all active sources.
+        limit: Maximum publications per source.
+        delay: Seconds between requests to the same origin.
+
+    Returns:
+        Process exit code.
+    """
+    conn = connect(db_path, read_only=False)
+    try:
+        repo = DuckDBRepository(conn)
+        sources = repo.list_web_sources()
+        if source_id:
+            sources = tuple(item for item in sources if item.source_id == source_id)
+            if not sources:
+                print(f"unknown source {source_id!r}", file=sys.stderr)
+                return EXIT_CONFIG
+        results = ingest_all(
+            sources, BrowserFetcher(delay_s=delay), repo, limit=limit
+        )
+    finally:
+        conn.close()
+
+    print(f"{'source':12} {'leaning':15} {'found':>6} {'stored':>7} {'text':>5} {'robots':>7} {'failed':>7}")
+    for result in results:
+        leaning = next(
+            (item.leaning for item in sources if item.source_id == result.source_id), "-"
+        )
+        print(
+            f"{result.source_id:12} {leaning:15} {result.discovered:>6} {result.stored:>7} "
+            f"{result.with_text:>5} {result.blocked_by_robots:>7} {result.failed:>7}"
+        )
+    print(
+        "\nPublications are a separate corpus: counts here are never added to broadcast segments (D-034)."
+    )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -1695,6 +1747,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "ingest-web":
+            return _cmd_ingest_web(
+                db_path=args.db, source_id=args.source, limit=args.limit, delay=args.delay
+            )
         if args.command == "probe":
             return _cmd_probe(
                 config_dir=args.config_dir,

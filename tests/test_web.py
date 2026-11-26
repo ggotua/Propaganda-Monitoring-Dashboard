@@ -120,6 +120,31 @@ def test_publication_id_is_deterministic_and_url_specific() -> None:
     assert first != publication_id("imedi", "https://tvpirveli.ge/a")
 
 
+def test_looks_like_article_distinguishes_sections_from_articles() -> None:
+    """Measured 2026-11-26: the section page links to sibling sections, and those were stored as articles."""
+    from gtaf.domain.web import looks_like_article
+
+    assert looks_like_article("https://tvpirveli.ge/ka/siaxleebi/politika/139842-slug") is True
+    assert looks_like_article("https://tvpirveli.ge/ka/siaxleebi/teqnologiebi") is False
+    assert looks_like_article("https://tvpirveli.ge/ka/siaxleebi/politika") is False
+
+
+def test_extract_excerpt_drops_the_navigation_paragraph() -> None:
+    """The first publication excerpts began with "სიახლეები პოლიტიკა …" before this rule."""
+    from gtaf.domain.web import extract_excerpt
+
+    page = (
+        "<p>სიახლეები პოლიტიკა საზოგადოება კრიმინალი მსოფლიო სპორტი ეკონომიკა კულტურა, "
+        "ტექნოლოგიები ტაბლოიდი</p>"
+        "<p>როგორც უწყებაში ამტკიცებენ, თადუმაძემ თანამდებობიდან პირადი განცხადების "
+        "საფუძველზე წასვლის შესახებ განაცხადა.</p>"
+    )
+    excerpt = extract_excerpt(page)
+
+    assert excerpt.startswith("როგორც უწყებაში")
+    assert "სპორტი" not in excerpt
+
+
 def test_dedupe_by_title_keeps_the_first() -> None:
     """Sites republish one story under two URLs; storing both doubles a topic's apparent activity."""
     items = (

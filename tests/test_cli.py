@@ -47,10 +47,14 @@ def test_schema_version_on_missing_database(tmp_path: Path) -> None:
 
 
 def test_unsupported_version_exits_three(initialized_db: Path) -> None:
-    """FR-2: an unknown version is its own exit code so scripts can distinguish it."""
+    """FR-2: an unknown version is its own exit code so scripts can distinguish it.
+
+    The value is deliberately far in the future rather than "current + 1": the test broke once when 9
+    stopped being an unknown version, which was a bug in the test, not in the code.
+    """
     conn = connect(initialized_db)
     try:
-        conn.execute("UPDATE schema_meta SET value = '9' WHERE key = 'schema_version'")
+        conn.execute("UPDATE schema_meta SET value = '999' WHERE key = 'schema_version'")
     finally:
         conn.close()
     assert main(["schema-version", str(initialized_db)]) == EXIT_SCHEMA
