@@ -10,7 +10,10 @@
 
 ## 1. Purpose (gestalt)
 
-A pipeline that **collects** YouTube captions from six Georgian TV channels, **cuts** them into thematic segments, **analyses** them (topics → entities → networks → aspect sentiment → frames/narratives over time), and **presents** results in two ways:
+A pipeline that **collects** two corpora from six Georgian TV channels — **broadcast transcripts** (YouTube
+captions) and, since D-034, the channels' **web publications** — **cuts** them into analysable units, **analyses**
+them (topics → entities → networks → aspect sentiment → frames/narratives over time), and **presents** results in
+two ways:
 
 1. **Workbench** — a Streamlit app where colleagues pick channels, period, methods and charts.
 2. **Report** — a self-contained bilingual (EN/KA) HTML dashboard built from the workbench selection, sendable by email or publishable on GitHub Pages.
@@ -33,8 +36,9 @@ Analogy: a newsroom monitoring desk. The collector is the intern recording every
 
 | In scope | Out of scope (v1) |
 |---|---|
-| 6 channels: Imedi, Rustavi 2, POSTV, GPB, Formula, TV Pirveli | Other channels, online-only media |
+| 6 channels: Imedi, Rustavi 2, POSTV, GPB, Formula, TV Pirveli | Other channels, online-only media beyond the configured sources |
 | Evening news, talk shows, interviews | Entertainment, ads, sports |
+| **Two corpora (D-034):** broadcast transcripts **and** the channels' web publications (articles and programme pages) | Merging the two corpora into one figure — they share a pipeline, never a denominator |
 | Videos with YouTube captions (auto or manual) | Videos without captions — **skipped**, logged |
 | Archive from **2026-10-01**, then daily forward | Older archive |
 | Scheduled automatic collection, local PC | Server deployment (designed for, not built) |

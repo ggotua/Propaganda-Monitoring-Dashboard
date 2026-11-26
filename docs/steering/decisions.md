@@ -1228,3 +1228,59 @@ browser" is **cookies from a signed-in browser** (`--cookies-from-browser` or an
 requires the owner's decision — D-015 declined cookies for age gates precisely because they expire and fail
 silently — so it is proposed rather than assumed.
 
+---
+
+## D-034: Two corpora, one pipeline — web publications become the primary source, broadcast stays as the reference
+
+Status: Accepted (2026-11-26). Requested as a major architectural decision by the project owner.
+
+Context: the broadcast corpus is frozen. YouTube blocks transcript access from this IP at the transport layer
+(D-033: 429 in our client, `IpBlocked` in an independent one, and five client-side workarounds all fail). The
+corpus has not grown since 14 November: **263 videos, one channel, 11 days**. Everything analytical is capped
+by that — including the question the dashboard exists to answer, whether a model can see criticism of an
+incumbent, which needs an opposition source.
+
+The same two channels publish text on their own sites, and those sites are reachable now:
+
+| Site | Reachable | Listing | robots.txt | Programs present |
+|---|---|---|---|---|
+| imedi.ge | yes, 106 KB archive page | `/archive` | `Allow: /`, disallows `/api/`, `/preview/` | yes — `ქრონიკა`, `გადაცემ` sections |
+| formulanews.ge | yes, 70 KB listing | `/Category/All` | disallows `/tag`, `/news/%` (ambiguous; no RSS) | not yet inspected |
+
+So the decision is not "scraping instead of YouTube" but **which corpus carries which claim**.
+
+Decision:
+1. **Two corpora, never merged.** `publications` (web articles and programme pages) and `segments` (broadcast
+   transcripts) are separate tables with separate units. Every figure states its corpus; no share, count or
+   comparison mixes them.
+2. **Web becomes the primary source for agenda and framing** while broadcast is blocked, because it is the only
+   corpus that can grow — and because it contains the opposition channel that the bias question needs.
+3. **Broadcast stays as the reference corpus.** It is the only ground truth about what actually aired, and it
+   is what a future unblocked collection extends. It is not deleted and not deprecated.
+4. **A concordance study gates the substitution.** Before any web figure may be described as what the channel
+   *broadcast*, measure the overlap: Imedi web vs Imedi broadcast over 3–13 November, comparing topic mix and
+   actor mentions. If agreement is low, the web corpus is a different product and must be described as
+   "what the site published", never as airtime.
+5. **Unit of analysis is the publication**, not the segment: one article, or one programme-page item. Programme
+   pages are first-class because the brief prioritises news and political programmes, and the site labels them.
+6. **Storage respects copyright and robots.** Title, URL, publication time, source, programme, a short excerpt
+   and an embedding are stored; the body text is transient (a git-ignored cache), used for analysis and not
+   redistributed. Imedi is fetched fully (robots allows); **Formula starts headline-only**, because its
+   `robots.txt` disallows `/news/%` and the intent is unclear — the owner can lift that restriction.
+
+Rejected:
+- **Wait for YouTube** — 11 days of waiting produced nothing, and the block is transport-level.
+- **Rotating residential proxies now** — unverified for this block, a recurring cost, and an evasion decision
+  that belongs to the owner; the `--proxy` path exists for when they choose it.
+- **Treat web text as equivalent to the broadcast** — the tempting shortcut. A site article and a bulletin
+  segment differ in register, length and audience; assuming equivalence is exactly the unmeasured leap this
+  project's gates exist to prevent.
+- **Drop the broadcast corpus** — it is the only evidence about actual airtime, and the only thing a future
+  collection extends.
+
+Consequences: the project is now **media monitoring of two channels across two media**, with broadcast as the
+reference corpus rather than the sole input. The stance-bias question becomes answerable within days instead of
+weeks. The cost is a new obligation: every published number must name its corpus, and the report gains a
+corpus-provenance line. Revisit if: YouTube unblocks and broadcast grows, or the concordance study shows the
+two corpora disagree so much that they must be reported as separate products.
+
