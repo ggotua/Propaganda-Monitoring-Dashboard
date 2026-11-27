@@ -17,6 +17,9 @@ from typing import Protocol
 from gtaf.domain.actors import Actor, find_mentions
 from gtaf.domain.stance import PROMPT_VERSION, build_prompt, parse_stance, summarise
 
+# Below this, the "article" is a headline and no body: labelling it measures the headline, not the article.
+MIN_EXCERPT_CHARS = 120
+
 
 class Gateway(Protocol):
     """Subset of the LLM gateway this use case needs."""
@@ -63,6 +66,7 @@ class WebStanceResult:
     labelled: int
     unparsable: int
     cost_usd: float
+    skipped_no_text: int = 0
 
 
 def label_publication_stance(
@@ -103,9 +107,16 @@ def label_publication_stance(
     cost = 0.0
 
     processed = 0
+    skipped_no_text = 0
     for publication_id, source, title, excerpt, leaning in rows:
         if processed >= limit:
             break
+        if len(excerpt.strip()) < MIN_EXCERPT_CHARS:
+            # A title alone is not the article. Measured 2026-11-27: with empty excerpts, a critical piece about
+            # Ivanishvili came back `unclear`, and a piece whose only Ivanishvili line was a teaser came back
+            # `critical` — both are artefacts of labelling on a headline.
+            skipped_no_text += 1
+            continue
         text = f"{title}. {excerpt}".strip()
         if not find_mentions(text, (actor,)):
             continue
@@ -147,6 +158,7 @@ def label_publication_stance(
         labelled=len(stored_rows),
         unparsable=unparsable,
         cost_usd=round(cost, 6),
+        skipped_no_text=skipped_no_text,
     )
 
 

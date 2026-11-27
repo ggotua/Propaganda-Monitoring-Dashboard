@@ -316,8 +316,15 @@ def _is_teaser(text: str) -> bool:
 # "მსგავსი" blocks elsewhere on the page, yet a teaser sentence still reached the stored excerpt.
 BODY_CONTAINERS = ("page__usercontent", "article-body", "post-content", "entry-content", "news-text")
 
-# A container ends at the next page section of the same template.
-_CONTAINER_BOUNDARY = 'class="page__'
+# A container ends at the next block that is not the article: related items, comments, footer.
+_CONTAINER_END_MARKERS = (
+    'class="page__similar',
+    'class="page__related',
+    'class="page__comments',
+    'class="page__footer',
+    'class="page__share',
+    "<aside",
+)
 
 
 def _article_region(page: str) -> str:
@@ -330,16 +337,24 @@ def _article_region(page: str) -> str:
         The region to extract paragraphs from.
 
     Notes:
-        Falls back to the whole page rather than returning nothing: a template change must degrade the excerpt,
-        not empty the corpus.
+        Measured 2026-11-27, the first version cut at the next ``class="page__`` marker, which on TV Pirveli is
+        ``page__comments`` **inside** the article container — the region came out 65 characters long and 14 of
+        30 reviewed rows had an empty excerpt. The end is now the nearest related/comments/footer block, and the
+        fallback is the whole page: a template change must degrade the excerpt, never empty the corpus.
     """
     for container in BODY_CONTAINERS:
         marker = f'class="{container}"'
         start = page.find(marker)
         if start < 0:
             continue
-        end = page.find(_CONTAINER_BOUNDARY, start + len(marker))
-        return page[start:end] if end > 0 else page[start:]
+        body_start = start + len(marker)
+        ends = [
+            position
+            for position in (page.find(marker_text, body_start) for marker_text in _CONTAINER_END_MARKERS)
+            if position > 0
+        ]
+        end = min(ends) if ends else len(page)
+        return page[start:end]
     return page
 
 

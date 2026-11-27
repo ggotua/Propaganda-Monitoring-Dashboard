@@ -75,6 +75,34 @@ def test_short_teaser_line_is_dropped_after_the_lead() -> None:
     assert "გამთლიანდება" not in excerpt
 
 
+def test_confusable_surname_is_not_the_actor() -> None:
+    """Measured 2026-11-27: "ზურაბაშვილი" (the PM's representative to Russia) was fuzzy-matched to
+    "ზურაბიშვილი" (the former president), and two unrelated stories were labelled as if they were about her."""
+    zourabichvili = Actor(actor_id="zourabichvili", ka="ზურაბიშვილი", en="Zourabichvili", aliases=())
+
+    assert match_token("ზურაბაშვილმა", zourabichvili) is None
+    assert match_token("ზურაბაშვილი", zourabichvili) is None
+    assert match_token("ზურაბიშვილი", zourabichvili) is not None
+
+
+def test_container_end_inside_the_body_does_not_empty_the_excerpt() -> None:
+    """Measured 2026-11-27: cutting at the next `class="page__` marker hit `page__comments` inside the article
+    container, leaving 14 of 30 reviewed rows with an empty excerpt."""
+    page = (
+        '<div class="page__usercontent">'
+        "<p>ბიძინა ივანიშვილის ყოფილმა ადვოკატმა, შალვა თადუმაძემ შს მინისტრის მოადგილის პოსტი დატოვა.</p>"
+        '<div class="page__comments">'
+        "<p>კომენტარები გამორთულია ამ სტატიისთვის, თუმცა დისკუსია გრძელდება სოციალურ ქსელებში.</p>"
+        "</div></div>"
+        '<div class="page__similar"><p>სხვა სიახლე, რომელიც თქვენთვის საინტერესო იქნება დღეს.</p></div>'
+    )
+
+    excerpt = extract_excerpt(page)
+
+    assert "თადუმაძემ" in excerpt
+    assert "კომენტარები" not in excerpt
+
+
 def test_different_first_name_same_surname_is_not_the_actor() -> None:
     """Measured 2026-11-27: "ადიკო ივანიშვილი" and "ბერა ივანიშვილი" were both counted as Bidzina
     Ivanishvili, so a protest story about a namesake was labelled as if it were about the party founder."""
@@ -82,6 +110,15 @@ def test_different_first_name_same_surname_is_not_the_actor() -> None:
 
     assert find_mentions("ადიკო ივანიშვილმა დღეს განაცხადა, რომ დაბრუნდება.", (ivanishvili,)) == ()
     assert find_mentions("ბერა ივანიშვილი კონცერტს გამართავს.", (ivanishvili,)) == ()
+
+
+def test_namesake_taints_the_whole_text() -> None:
+    """Measured 2026-11-27: a story about Adiko Ivanishvili also said "ივანიშვილი" later, so dropping only the
+    namesake token left Bidzina in place for that article."""
+    ivanishvili = Actor(actor_id="ivanishvili", ka="ივანიშვილი", en="Ivanishvili", aliases=())
+    text = "ადიკო ივანიშვილმა კონცერტი გამართა. ივანიშვილმა ასევე აღნიშნა, რომ დაბრუნდება."
+
+    assert find_mentions(text, (ivanishvili,)) == ()
 
 
 def test_bare_surname_still_matches() -> None:

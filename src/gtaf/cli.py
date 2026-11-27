@@ -1815,7 +1815,7 @@ def _cmd_stance_web(
 
     print(
         f"{actor.en}: labelled {result.labelled} publication(s) | unparsable {result.unparsable} | "
-        f"cost ${result.cost_usd:.6f}"
+        f"skipped without body text {result.skipped_no_text} | cost ${result.cost_usd:.6f}"
     )
     if not result.by_source:
         print("no publications mentioning the target; nothing to compare")

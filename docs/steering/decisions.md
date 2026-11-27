@@ -1657,3 +1657,51 @@ supportive 2, unclear 6). If it clears, the corpus is labelled in full and the r
 class coverage stated. Revisit if: the enriched sheet shows `critical` recall below half, which would point at
 implicature rather than at plumbing.
 
+---
+
+## D-042: My container fix emptied 14 of 30 excerpts; title-only labelling is now refused, and two surname rules landed
+
+Status: Accepted (2026-11-27). Regression caught by the reviewer, on the batch that followed D-041.
+
+Context: the enriched sheet scored 25/30, but **14 of 30 rows had an empty excerpt, all TV Pirveli** — and those
+rows were judged from titles alone. The cause was mine, not the site's:
+
+> `_article_region` cut the page at the next `class="page__` marker. On TV Pirveli that marker is
+> `page__comments`, which sits **inside** the article container, so the region came out **65 characters** long
+> and `extract_excerpt` returned nothing.
+
+Two of the reviewer's misses follow directly from title-only labelling: a piece about Ivanishvili forcing his
+son out came back `unclear` (it was `critical` with text), and a Kavelashvili pardons piece came back `critical`
+of Ivanishvili on a teaser line alone.
+
+Fixes:
+1. **The container end is a related/comments/footer block**, not the next `page__` marker. Verified on the live
+   page: the excerpt for the same article is **541 characters** of real prose.
+2. **Title-only labelling is refused.** `label_publication_stance` skips a publication whose excerpt is shorter
+   than 120 characters and reports the count (`skipped without body text`). Measured: **108** publications.
+3. **A namesake taints the whole text.** Dropping only the matched token still let a later bare surname through,
+   so a story about Adiko Ivanishvili was counted as being about Bidzina. If a distractor first name precedes
+   any surname in the text, the actor is skipped for that publication.
+4. **Confusable surnames are not fuzzy-matched.** "ზურაბაშვილი" (the PM's representative to Russia) was matched
+   to "ზურაბიშვილი" (the former president) — one edit apart, and two unrelated stories were labelled as if they
+   concerned her. The pair is now bridged by no ending and no fuzzy rule.
+
+Corpus after re-ingest: TV Pirveli **611** publications with **27** empty excerpts (4.4 %), Imedi **821** with
+**78** (9.5 %). Those are video-heavy or index pages; they are stored for the record and excluded from stance.
+
+The re-run sheet (`reports/g8-web-final-enriched.csv`, same seed and partition) now has **no row under 150
+characters**: 30 rows, TV Pirveli 20 / Imedi 10, model labels critical 12, neutral 12, supportive 2, unclear 4.
+
+Open, and not fixed here:
+- **Row 16 (Cheishvili)** has now been labelled supportive, neutral and neutral across three runs on the same id.
+  The determinism probe says the sampler is stable, so this is version-to-version drift on a genuinely hard
+  case: praise of the target embedded in an attack on the opposition. It needs its own example in the prompt.
+- **Row 21 (Tsilosani)** uses Georgian sarcasm of the ისეთი…როგორიც form ("such a political prisoner as Mikheil
+  Saakashvili") and reads as `neutral`. One construction deserves one prompt example.
+- **Row 26's Zurabishvili/teaser miss** should disappear with text restored; this sheet tests that.
+
+Decision: **the next gate run uses this sheet**, and no further prompt change lands until it is scored — the
+fixes here were pipeline repairs, not prompt tuning, which is what keeps the sheet honest. Revisit if: the
+restored-text run still misses `critical` on rows whose text is present, which would move the question from
+plumbing back to the model.
+

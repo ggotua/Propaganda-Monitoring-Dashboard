@@ -62,6 +62,14 @@ DISTRACTOR_FIRST_NAMES: dict[str, frozenset[str]] = {
     "ivanishvili": frozenset({"ადიკო", "ბერა", "გიორგი", "შალვა"}),
 }
 
+# Surnames one edit apart that belong to different people. Measured 2026-11-27: "ზურაბაშვილი" (Giorgi
+# Zurabashvili, the PM's representative to Russia) was fuzzy-matched to "ზურაბიშვილი" (Salome Zourabichvili,
+# former president), so two unrelated stories were labelled as if they were about her. Fuzzy matching must be
+# switched off for the pair, not left to the similarity floor.
+CONFUSABLE_SURNAMES: dict[str, tuple[str, ...]] = {
+    "zourabichvili": ("ზურაბაშვილ",),
+}
+
 # Minimum length for fuzzy matching: short stems collide with ordinary words — measured 2026-11-20,
 # `მელია` (5 letters) matched `მედია` ("media"), `მერია` ("city hall") and `მეტია` ("more") at one edit
 # apiece, inflating that actor to 79 segments from 4. No fuzzy matching below 7 characters.
@@ -312,6 +320,11 @@ def match_token(token: str, actor: Actor) -> Mention | None:
     if token in STOPWORDS:
         return None
 
+    for confusable in CONFUSABLE_SURNAMES.get(actor.actor_id, ()):
+        if token.startswith(confusable):
+            # A different person whose surname is one edit away; no ending or fuzzy rule may bridge them.
+            return None
+
     stem_value = stem(actor.ka)
     for alias in (actor.ka, *actor.aliases):
         alias_stem = stem(alias)
@@ -352,22 +365,29 @@ def find_mentions(text: str, actors: Sequence[Actor]) -> tuple[Mention, ...]:
     tokens = tokenise(text)
     seen: set[str] = set()
     mentions: list[Mention] = []
+    # If a namesake is named anywhere in the text, the whole text is about that person: dropping only the
+    # matched token left the actor in place through a later bare surname. Measured 2026-11-27 on a story about
+    # Adiko Ivanishvili that also said "ივანიშვილი" later.
+    tainted: set[str] = set()
+    for index in range(1, len(tokens)):
+        preceding = tokens[index - 1]
+        for actor_id, first_names in DISTRACTOR_FIRST_NAMES.items():
+            if preceding in first_names:
+                tainted.add(actor_id)
+
     for index, token in enumerate(tokens):
         # Skip a surname used as a street name; the next token says so in Georgian.
         following = tokens[index + 1] if index + 1 < len(tokens) else ""
         if following.startswith(STREET_PREFIXES):
             continue
-        preceding = tokens[index - 1] if index > 0 else ""
         for actor in actors:
-            mention = match_token(token, actor)
-            if mention is None or mention.actor_id in seen:
+            if actor.actor_id in tainted:
                 continue
-            if preceding and preceding in DISTRACTOR_FIRST_NAMES.get(mention.actor_id, frozenset()):
-                # A different person with the same surname: drop the mention.
+            mention = match_token(token, actor)
+            if mention is not None and mention.actor_id not in seen:
+                seen.add(mention.actor_id)
+                mentions.append(mention)
                 break
-            seen.add(mention.actor_id)
-            mentions.append(mention)
-            break
     return tuple(mentions)
 
 
