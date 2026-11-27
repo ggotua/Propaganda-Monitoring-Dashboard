@@ -102,6 +102,7 @@ def build_sample(
     size: int,
     seed: int = 42,
     per_source_min: int = 2,
+    enrich: bool = False,
 ) -> tuple[ReviewRow, ...]:
     """Draw a review sample from labelled publications.
 
@@ -131,6 +132,45 @@ def build_sample(
         return ()
 
     generator = random.Random(seed)
+
+    if enrich:
+        # Round-robin across the model's labels, so a rare class is not outvoted by `neutral`. This makes the
+        # sheet useful for per-class recall and useless for the corpus-level rate: the classes are now in
+        # proportions the corpus does not have. Both facts are stated in the sheet and in the decision log.
+        by_label: dict[str, list[tuple[str, str, str, str, str, float, str]]] = {}
+        for row in rows:
+            by_label.setdefault(row[4], []).append(row)
+        for queue in by_label.values():
+            queue.sort(key=lambda item: item[0])
+            generator.shuffle(queue)
+        chosen_enriched: list[tuple[str, str, str, str, str, float, str]] = []
+        order = ["critical", "supportive", "unclear", "neutral"]
+        cursor = 0
+        while len(chosen_enriched) < size and any(by_label.get(label) for label in order):
+            label = order[cursor % len(order)]
+            cursor += 1
+            queue = by_label.get(label) or []
+            if queue:
+                chosen_enriched.append(queue.pop())
+        return tuple(
+            sorted(
+                (
+                    ReviewRow(
+                        publication_id=row[0],
+                        source_id=row[1],
+                        leaning=row[2],
+                        title=row[3],
+                        excerpt=excerpts.get(row[0], ""),
+                        model_label=row[4],
+                        confidence=row[5],
+                        target=row[6],
+                    )
+                    for row in chosen_enriched
+                ),
+                key=lambda item: (item.model_label, item.target, item.title),
+            )
+        )
+
     total = len(rows)
     quotas: dict[str, int] = {}
     for source, items in by_source.items():

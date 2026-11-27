@@ -311,6 +311,38 @@ def _is_teaser(text: str) -> bool:
     return len(text) < TEASER_MAX_CHARS and not text.rstrip().endswith((".", "!", "?"))
 
 
+# Article bodies live in one container on each CMS. Restricting extraction to it removes related-article teasers,
+# which sit outside: measured 2026-11-27, TV Pirveli wraps the body in `<div class="page__usercontent">` and puts
+# "მსგავსი" blocks elsewhere on the page, yet a teaser sentence still reached the stored excerpt.
+BODY_CONTAINERS = ("page__usercontent", "article-body", "post-content", "entry-content", "news-text")
+
+# A container ends at the next page section of the same template.
+_CONTAINER_BOUNDARY = 'class="page__'
+
+
+def _article_region(page: str) -> str:
+    """Return the article body region of a page, or the page itself when no container is found.
+
+    Args:
+        page: Full page HTML.
+
+    Returns:
+        The region to extract paragraphs from.
+
+    Notes:
+        Falls back to the whole page rather than returning nothing: a template change must degrade the excerpt,
+        not empty the corpus.
+    """
+    for container in BODY_CONTAINERS:
+        marker = f'class="{container}"'
+        start = page.find(marker)
+        if start < 0:
+            continue
+        end = page.find(_CONTAINER_BOUNDARY, start + len(marker))
+        return page[start:end] if end > 0 else page[start:]
+    return page
+
+
 def extract_excerpt(page: str, *, max_chars: int = 1500) -> str:
     """Return the first meaningful prose from an article page.
 
@@ -325,8 +357,9 @@ def extract_excerpt(page: str, *, max_chars: int = 1500) -> str:
         Navigation renders as paragraphs too. The first paragraph of a Georgian news page is typically the
         category menu, so the extractor skips short and menu-like lines instead of trusting position.
     """
+    region = _article_region(page)
     paragraphs = [
-        clean_text(match) for match in re.findall(r"<p[^>]*>(.*?)</p>", page, re.DOTALL)
+        clean_text(match) for match in re.findall(r"<p[^>]*>(.*?)</p>", region, re.DOTALL)
     ]
     prose = [
         text

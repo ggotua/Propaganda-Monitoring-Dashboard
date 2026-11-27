@@ -1605,3 +1605,55 @@ Consequences: `reports/g8-web-holdout-pure.csv` holds 30 rows drawn from 54 held
 material nor an exhausted sheet. Revisit if: the holdout sheet reaches 0.80 overall and 0.60 on `critical`
 recall, which would be the first defensible pass for the two measurable classes.
 
+---
+
+## D-041: 27/30 on held-out material; three repo-level defects fixed, and the label drift was a prompt change, not randomness
+
+Status: Accepted (2026-11-27). Fifth review.
+
+Context: the holdout sheet scored **27/30 = 90 %** (neutral 20/20, critical 4/5, supportive 1/2, unclear 2/3) on
+a sheet that carried real stance: 5 `critical` and 2 `supportive` rows. Combined with the previous 37/40, the
+reviewer's conclusion is that the model itself is above the gate and what remains is pipeline work.
+
+The reviewer also reported that the same publication id changed label between runs (supportive → neutral at the
+same 0.80 confidence) and asked whether to force temperature 0 or take a majority of three.
+
+**Measured: the model is deterministic here.** Three identical calls to the same prompt returned the same label
+three times (`critical`, `critical`, `critical`). The drift came from the **prompt version change** from v4 to
+v5 between the two runs, which is exactly the alternative the reviewer raised. The consequence is a rule, not a
+code change: labels from different `prompt_version` values are never compared, and the stored version is shown
+whenever a change is reported.
+
+Pipeline fixes in this increment:
+
+| Defect | Verification |
+|---|---|
+| Vocative surname | the Kupradze article ("კობახიძევ, ქვეყანა შენი და შენი პარტიის დუქანი არ არის!") now matches **kobakhidze** and carries `critical` under v5. The reviewer's "still only under Mdinaradze" matched a sheet drawn before that row was labelled |
+| Homonyms | `ადიკო ივანიშვილი` and `ბერა ივანიშვილი` no longer map to Bidzina; a bare surname still matches, because dropping it would erase most of the corpus |
+| Related-article teasers | extraction is bounded to the CMS body container (`page__usercontent`), so teaser paragraphs outside it cannot enter the excerpt |
+| SVG geometry | re-ingesting both sources left **0** excerpts containing markup; average excerpt is 672 characters |
+
+Corpus after re-ingest: **1,415 publications** (Imedi 821, TV Pirveli 594), all dated, 233 labelled under v5.
+
+Decision:
+1. **The publication G-8 is a CONDITIONAL PASS** for `critical` and `neutral` (4/5 and 20/20 on the last two
+   holdout sheets), and **unmeasured** for `supportive`.
+2. **A final stance-rich check runs before labelling the full corpus**, on a sheet drawn from the holdout
+   partition, excluding every previously reviewed publication, and **enriched across model labels**. The
+   enrichment is disclosed because it invalidates the corpus-level rate while making per-class recall readable.
+3. **No majority-of-three voting** — the model was measured deterministic, and three calls per item would
+   triple cost to fix a problem that does not exist. Revisit only if a future probe shows disagreement.
+
+Rejected:
+- **Change the temperature** — it is already 0 on both transports; the probe shows the sampler is not the source.
+- **Require a first name before accepting a bare surname** (the reviewer's stricter option) — measured: in this
+  corpus nearly every reference is the bare surname, so the rule would remove most of the signal to catch a
+  small set of namesakes. The narrower rule (drop only known conflicting first names) removes the false
+  positives without the collateral loss.
+- **Gate on a random sheet** — it came out 26/30 neutral and could not test `critical` recall at all.
+
+Consequences: `reports/g8-web-final-enriched.csv` holds the 30-row final check (model: critical 11, neutral 11,
+supportive 2, unclear 6). If it clears, the corpus is labelled in full and the report gains a G-8 line with its
+class coverage stated. Revisit if: the enriched sheet shows `critical` recall below half, which would point at
+implicature rather than at plumbing.
+

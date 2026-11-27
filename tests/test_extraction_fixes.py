@@ -75,6 +75,41 @@ def test_short_teaser_line_is_dropped_after_the_lead() -> None:
     assert "გამთლიანდება" not in excerpt
 
 
+def test_different_first_name_same_surname_is_not_the_actor() -> None:
+    """Measured 2026-11-27: "ადიკო ივანიშვილი" and "ბერა ივანიშვილი" were both counted as Bidzina
+    Ivanishvili, so a protest story about a namesake was labelled as if it were about the party founder."""
+    ivanishvili = Actor(actor_id="ivanishvili", ka="ივანიშვილი", en="Ivanishvili", aliases=())
+
+    assert find_mentions("ადიკო ივანიშვილმა დღეს განაცხადა, რომ დაბრუნდება.", (ivanishvili,)) == ()
+    assert find_mentions("ბერა ივანიშვილი კონცერტს გამართავს.", (ivanishvili,)) == ()
+
+
+def test_bare_surname_still_matches() -> None:
+    """The guard must not remove ordinary references: dropping a bare surname would erase most of the corpus."""
+    ivanishvili = Actor(actor_id="ivanishvili", ka="ივანიშვილი", en="Ivanishvili", aliases=())
+
+    assert find_mentions("ივანიშვილმა დღეს განაცხადა, რომ მოლაპარაკებები გაგრძელდება.", (ivanishvili,)) != ()
+
+
+def test_teaser_outside_the_body_container_is_excluded() -> None:
+    """Measured 2026-11-27: a related-article sentence ("Kurtulmuş said…") sat at the end of a stored excerpt and
+    could carry a stance. TV Pirveli keeps the body in `page__usercontent` and teasers outside it."""
+    page = (
+        '<div class="page__header">menu</div>'
+        '<div class="page__usercontent">'
+        "<p>როგორც უწყებაში ამტკიცებენ, თადუმაძემ თანამდებობიდან პირადი განცხადების საფუძველზე გათავისუფლდა.</p>"
+        "</div>"
+        '<div class="page__similar">'
+        "<p>კურტულმუშმა განაცხადა, რომ თურქეთი მზადაა შუამავლობისთვის და ეს პროცესი გაგრძელდება.</p>"
+        "</div>"
+    )
+
+    excerpt = extract_excerpt(page)
+
+    assert "თადუმაძემ" in excerpt
+    assert "კურტულმუშმა" not in excerpt
+
+
 def test_teaser_marker_cuts_the_excerpt() -> None:
     """A related-article heading ends the article text, whatever follows it."""
     page = (

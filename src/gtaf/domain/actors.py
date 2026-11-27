@@ -55,6 +55,13 @@ ENDINGS: tuple[str, ...] = (
 # (ქუჩა, ქუჩას, ქუჩაზე, ქუჩის, ქუჩებში, გამზირი, გამზირს), so the check is by prefix.
 STREET_PREFIXES = ("ქუჩ", "გამზირ", "ქ.")
 
+# Given names that share a surname with a dictionary person. Measured 2026-11-27: "ადიკო ივანიშვილი" and
+# "ბერა ივანიშვილი" were both counted as Bidzina Ivanishvili. A surname preceded by one of these names is a
+# different person, so the mention is dropped rather than reassigned to an actor we do not track.
+DISTRACTOR_FIRST_NAMES: dict[str, frozenset[str]] = {
+    "ivanishvili": frozenset({"ადიკო", "ბერა", "გიორგი", "შალვა"}),
+}
+
 # Minimum length for fuzzy matching: short stems collide with ordinary words — measured 2026-11-20,
 # `მელია` (5 letters) matched `მედია` ("media"), `მერია` ("city hall") and `მეტია` ("more") at one edit
 # apiece, inflating that actor to 79 segments from 4. No fuzzy matching below 7 characters.
@@ -350,12 +357,17 @@ def find_mentions(text: str, actors: Sequence[Actor]) -> tuple[Mention, ...]:
         following = tokens[index + 1] if index + 1 < len(tokens) else ""
         if following.startswith(STREET_PREFIXES):
             continue
+        preceding = tokens[index - 1] if index > 0 else ""
         for actor in actors:
             mention = match_token(token, actor)
-            if mention is not None and mention.actor_id not in seen:
-                seen.add(mention.actor_id)
-                mentions.append(mention)
+            if mention is None or mention.actor_id in seen:
+                continue
+            if preceding and preceding in DISTRACTOR_FIRST_NAMES.get(mention.actor_id, frozenset()):
+                # A different person with the same surname: drop the mention.
                 break
+            seen.add(mention.actor_id)
+            mentions.append(mention)
+            break
     return tuple(mentions)
 
 

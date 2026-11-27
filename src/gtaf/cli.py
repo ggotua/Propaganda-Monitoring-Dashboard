@@ -401,6 +401,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="restrict to the tuning or the held-out half of the corpus (hash split)",
     )
     review_web.add_argument("--holdout-percent", type=int, default=30)
+    review_web.add_argument(
+        "--enrich",
+        action="store_true",
+        help="balance the sheet across model labels (for per-class recall only, not the corpus rate)",
+    )
 
     score_web = sub.add_parser("score-web", help="score a filled stance review (G-8, web corpus)")
     score_web.add_argument("--csv", type=Path, required=True)
@@ -1954,6 +1959,7 @@ def _cmd_review_web(
     exclude_reviewed: bool = False,
     partition: str | None = None,
     holdout_percent: int = 30,
+    enrich: bool = False,
 ) -> int:
     """Write a publication-stance review sample (G-8 for the web corpus).
 
@@ -2006,6 +2012,7 @@ def _cmd_review_web(
             target=",".join(targets),
             size=size,
             seed=seed,
+            enrich=enrich,
         )
     finally:
         conn.close()
@@ -2139,6 +2146,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 exclude_reviewed=args.exclude_reviewed,
                 partition=args.partition,
                 holdout_percent=args.holdout_percent,
+                enrich=args.enrich,
             )
         if args.command == "score-web":
             return _cmd_score_web(csv_path=args.csv, minimum=args.min)
