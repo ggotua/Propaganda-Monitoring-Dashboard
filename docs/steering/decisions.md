@@ -1553,3 +1553,55 @@ class is documented as untestable rather than reported as zero. Revisit if: the 
 above 0.80 with `critical` recall above half, which would let the conditional pass become a pass for the two
 classes the corpus can measure.
 
+---
+
+## D-040: Held-out run passes at 92.5 %, but four pipeline defects explain most residual error — and each gate sample becomes tuning material
+
+Status: Accepted (2026-11-27). Fourth review, first on material no prompt had seen.
+
+Context: the held-out sheet scored **37/40 = 92.5 %** (neutral 30/31, unclear 4/4, supportive 1/1,
+**critical 2/4**). The reviewer's own reading is the accurate one: *"a pass, with fixes — the sample is easy,
+31 of 40 rows are neutral Imedi headlines."*
+
+The two wrong `critical` labels were **not** model errors. Both came from the pipeline:
+
+| Defect | Evidence | Fix |
+|---|---|---|
+| Probe/teaser text pollutes the excerpt | row 17's only Ivanishvili line was a teaser for another story; also rows 21, 22, 23, 34 | `extract_excerpt` stops at a related-article heading and drops short teaser lines after the lead |
+| Icon geometry read as prose | a TV Pirveli page's first "paragraph" was **12,858 characters of `<path d="M18.759…">`** | paragraphs containing SVG data or under 50 % Georgian are rejected |
+| Vocative surname never matched | row 32, "კობახიძევ, ქვეყანა შენი და შენი პარტიის დუქანი არ არის!" — the most direct criticism in the batch | `-ევ`, `-ეს`, `-ით` added to `ENDINGS` |
+| Street name read as a person | row 25, a water-outage notice listing "კობახიძის" as a street | a surname followed by a token starting `ქუჩ`/`გამზირ` is skipped |
+| One article, several targets | Beselia's piece produced `critical` for Ivanishvili, Mdinaradze **and** Garibashvili, though Garibashvili appears only as the victim | prompt v5: label the target's own attribution, not the text's overall tone, with the Beselia example |
+
+Measured after the fixes (v5, on the same corpus):
+
+| Target | v4 critical | v5 critical |
+|---|---|---|
+| Kobakhidze / TV Pirveli | 3 | **5** (the vocative row is now among them) |
+| Ivanishvili / TV Pirveli | 14 | **16** |
+
+**The victim-role defect is not fixed.** Both remaining Garibashvili `critical` labels are on passages that cast
+him as the target of someone else's action ("if Ivanishvili jailed Garibashvili…", "Ivanishvili might feed
+Mdinaradze to Garibashvili"). The v5 instruction states the victim case explicitly and the model still labels
+`critical`; that is now a model limitation, not a pipeline one.
+
+Decision:
+1. **The corpus is split by id hash into tuning (70 %) and holdout (30 %).** Every gate run uses
+   `--partition holdout`; the tuning half is what prompts may be adjusted against.
+2. **A partition, not an exclusion list, is the durable fix.** `--exclude-reviewed` worked, but each new review
+   sheet then becomes tuning material too — measured here: v4 scored 87 % on its sheet, v5 was aimed at that
+   same sheet, and the next gate had nothing untainted. A hash split cannot be consumed by iteration.
+3. **The gate stays CONDITIONAL.** 92.5 % on an easy sample, with `critical` at 2/4 and `supportive` at one row,
+   does not clear a class-balanced threshold.
+
+Rejected:
+- **Call 92.5 % a pass** — the sample was 78 % neutral, `critical` recall is 50 %, and `supportive` rests on one
+  row.
+- **Keep gating on excluded sheets** — it degrades as fast as we iterate.
+- **Tune the prompt on the new holdout sample** — that would reproduce the same failure one level down.
+
+Consequences: `reports/g8-web-holdout-pure.csv` holds 30 rows drawn from 54 held-out labelled publications
+(critical 5, neutral 21, supportive 1, unclear 3). Scoring it gives the first figure that is neither tuned
+material nor an exhausted sheet. Revisit if: the holdout sheet reaches 0.80 overall and 0.60 on `critical`
+recall, which would be the first defensible pass for the two measurable classes.
+

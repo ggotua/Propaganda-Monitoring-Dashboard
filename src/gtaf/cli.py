@@ -50,6 +50,7 @@ from gtaf.application.report import build_report
 from gtaf.application.report_web import ConcordanceBlock, build_web_report
 from gtaf.application.review_web import (
     build_sample,
+    in_partition,
     read_labels,
     reviewed_ids,
     score,
@@ -393,6 +394,13 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="held-out mode: drop publications that appear in an earlier g8-web-review*.csv",
     )
+    review_web.add_argument(
+        "--partition",
+        choices=("tuning", "holdout"),
+        default=None,
+        help="restrict to the tuning or the held-out half of the corpus (hash split)",
+    )
+    review_web.add_argument("--holdout-percent", type=int, default=30)
 
     score_web = sub.add_parser("score-web", help="score a filled stance review (G-8, web corpus)")
     score_web.add_argument("--csv", type=Path, required=True)
@@ -1944,6 +1952,8 @@ def _cmd_review_web(
     seed: int,
     out_path: Path,
     exclude_reviewed: bool = False,
+    partition: str | None = None,
+    holdout_percent: int = 30,
 ) -> int:
     """Write a publication-stance review sample (G-8 for the web corpus).
 
@@ -1978,6 +1988,17 @@ def _cmd_review_web(
             print(
                 f"held-out mode: excluded {before - len(pooled)} publication(s) already used in "
                 f"{len(sheets)} earlier sheet(s)"
+            )
+        if partition:
+            before = len(pooled)
+            pooled = [
+                row
+                for row in pooled
+                if in_partition(row[0], partition=partition, holdout_percent=holdout_percent)
+            ]
+            print(
+                f"partition {partition!r} ({holdout_percent}% holdout): kept "
+                f"{len(pooled)} of {before} labelled publication(s)"
             )
         sample = build_sample(
             pooled,
@@ -2116,6 +2137,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 seed=args.seed,
                 out_path=args.out,
                 exclude_reviewed=args.exclude_reviewed,
+                partition=args.partition,
+                holdout_percent=args.holdout_percent,
             )
         if args.command == "score-web":
             return _cmd_score_web(csv_path=args.csv, minimum=args.min)

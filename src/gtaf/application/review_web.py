@@ -45,6 +45,29 @@ class ReviewRow:
     target: str
 
 
+def in_partition(publication_id: str, *, partition: str, holdout_percent: int = 30) -> bool:
+    """Decide whether a publication belongs to the tuning or the held-out partition.
+
+    Args:
+        publication_id: Stable publication id.
+        partition: ``tuning`` or ``holdout``.
+        holdout_percent: Share of publications reserved for gating.
+
+    Returns:
+        True when the publication belongs to the requested partition.
+
+    Notes:
+        Measured 2026-11-27: prompt v4 scored 87 % and v5 was aimed at the very same sheet, so every gate sample
+        became tuning material and the next gate had nothing untainted to measure. A hash partition fixes this
+        structurally: the tuning half may be read as often as we like, and the held-out half is only ever scored.
+
+        The split is by id hash, not by time, so it cannot be gamed by collecting more of one period.
+    """
+    bucket = int(publication_id[:8], 16) % 100
+    is_holdout = bucket < holdout_percent
+    return is_holdout if partition == "holdout" else not is_holdout
+
+
 def reviewed_ids(paths: Sequence[Path]) -> set[str]:
     """Return publication ids that appear in earlier review sheets.
 

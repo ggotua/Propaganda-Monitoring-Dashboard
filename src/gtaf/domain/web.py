@@ -271,6 +271,46 @@ def _is_navigation(text: str) -> bool:
     return hits >= 3
 
 
+# A paragraph that is mostly markup rather than prose: measured 2026-11-26, a TV Pirveli article's first
+# "paragraph" was 12,858 characters of `<path d="M18.759,7.066...">` SVG data. It passed every length and
+# punctuation check, so the stored excerpt for that publication was icon geometry, and stance was labelled on it.
+_MARKUP_MARKERS = ('data-name=', 'd="M', "<path", "svg", "&nbsp;")
+_GEORGIAN = re.compile(r"[\u10A0-\u10FF]")
+# Related-article blocks carry a heading like this; everything after it belongs to another story.
+TEASER_MARKERS = ("ასევე", "მსგავსი", "სხვა სიახლე", "read also", "related")
+# A teaser is a short standalone label ("ვაპირებთ ბრძოლას მანამ..."), not a paragraph of prose.
+TEASER_MAX_CHARS = 140
+LEAD_PARAGRAPHS_KEPT = 2
+
+
+def _is_markup(text: str) -> bool:
+    """Return True when a "paragraph" is markup or a placeholder rather than prose.
+
+    Args:
+        text: Paragraph text.
+
+    Returns:
+        True when it contains SVG or HTML fragments, or is mostly non-Georgian.
+    """
+    lowered = text.lower()
+    if any(marker in lowered for marker in _MARKUP_MARKERS):
+        return True
+    georgian = len(_GEORGIAN.findall(text))
+    return georgian < max(20, int(len(text) * 0.5))
+
+
+def _is_teaser(text: str) -> bool:
+    """Return True when a paragraph looks like a related-article label.
+
+    Args:
+        text: Paragraph text.
+
+    Returns:
+        True for a short line that is not a sentence.
+    """
+    return len(text) < TEASER_MAX_CHARS and not text.rstrip().endswith((".", "!", "?"))
+
+
 def extract_excerpt(page: str, *, max_chars: int = 1500) -> str:
     """Return the first meaningful prose from an article page.
 
@@ -292,15 +332,23 @@ def extract_excerpt(page: str, *, max_chars: int = 1500) -> str:
         text
         for text in paragraphs
         if len(text) > 60
+        and not _is_markup(text)
         and not _is_navigation(text)
         # A category menu renders as one long paragraph of capitalised words with no sentence
         # punctuation. Requiring punctuation is crude, but it is exactly the difference between
         # "სიახლეები პოლიტიკა საზოგადოება" and a sentence, and it needs no vocabulary list.
         and any(mark in text for mark in (".", ",", "!", "?", "—"))
     ]
-    if not prose:
+
+    kept: list[str] = []
+    for index, text in enumerate(prose):
+        if any(marker.lower() in text.lower() for marker in TEASER_MARKERS):
+            break  # everything from here on belongs to another story
+        if index < LEAD_PARAGRAPHS_KEPT or not _is_teaser(text):
+            kept.append(text)
+    if not kept:
         return ""
-    joined = " ".join(prose)
+    joined = " ".join(kept)
     return joined[:max_chars]
 
 

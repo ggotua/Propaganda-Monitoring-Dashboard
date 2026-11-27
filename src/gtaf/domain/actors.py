@@ -33,6 +33,9 @@ ENDINGS: tuple[str, ...] = (
     "დან",
     "ემ",
     "ამ",
+    "ევ",  # vocative of -ე surnames: კობახიძევ — the most direct form of criticism
+    "ეს",  # dative: კობახიძეს
+    "ით",  # instrumental: კობახიძით
     "ისა",
     "ის",
     "სა",
@@ -46,6 +49,11 @@ ENDINGS: tuple[str, ...] = (
     "მ",
     "ც",
 )
+
+# A surname used as a street name is not a person: measured 2026-11-27, a water-outage notice listing
+# "კობახიძის" as a street produced a mention with no person in it. Georgian inflects the word heavily
+# (ქუჩა, ქუჩას, ქუჩაზე, ქუჩის, ქუჩებში, გამზირი, გამზირს), so the check is by prefix.
+STREET_PREFIXES = ("ქუჩ", "გამზირ", "ქ.")
 
 # Minimum length for fuzzy matching: short stems collide with ordinary words — measured 2026-11-20,
 # `მელია` (5 letters) matched `მედია` ("media"), `მერია` ("city hall") and `მეტია` ("more") at one edit
@@ -337,7 +345,11 @@ def find_mentions(text: str, actors: Sequence[Actor]) -> tuple[Mention, ...]:
     tokens = tokenise(text)
     seen: set[str] = set()
     mentions: list[Mention] = []
-    for token in tokens:
+    for index, token in enumerate(tokens):
+        # Skip a surname used as a street name; the next token says so in Georgian.
+        following = tokens[index + 1] if index + 1 < len(tokens) else ""
+        if following.startswith(STREET_PREFIXES):
+            continue
         for actor in actors:
             mention = match_token(token, actor)
             if mention is not None and mention.actor_id not in seen:
