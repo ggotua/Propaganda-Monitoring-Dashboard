@@ -6,6 +6,10 @@
 #
 # One setting must be chosen by the repository owner, once:
 #   Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+#   Settings -> Environments -> github-pages -> Deployment branches and tags -> allow `main`
+#
+# Measured 2026-11-28: without the second setting the deploy job is rejected at setup with
+#   Branch "main" is not allowed to deploy to github-pages due to environment protection rules.
 
 name: Deploy public report
 
@@ -30,7 +34,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
         with:
           # The first run failed because Pages was still served from "deploy from a branch". This lets the job
