@@ -1845,3 +1845,57 @@ Consequences: `docs/WEB-FINDINGS.md` carries the finding and its limits; the web
 reports "below threshold". Revisit if: a frozen matcher restores rho above 0.7 on the same window, or the
 codebook question about epithets is decided with a v6 prompt.
 
+---
+
+## D-046: Matcher frozen; the concordance stays withdrawn; a third outlet joins without a leaning; `supportive` is genuinely rare
+
+Status: Accepted (2026-11-28). The three follow-ups the reviewer asked for.
+
+### 1. The matcher is frozen and named
+
+`MATCHER_VERSION = "matcher-2026-11-28"` is now printed beside every concordance figure. Re-measured on the
+frozen matcher, Imedi's site-versus-broadcast correlation is **rho = 0.673** — still below the 0.7 threshold, so
+D-036's licence stays withdrawn and the withdrawal is final rather than "pending re-measurement". The lesson is
+recorded in the code: a mention-derived number names the matcher that produced it, and is re-measured rather
+than carried forward when the matcher changes.
+
+### 2. A third outlet, with its leaning deliberately unassigned
+
+Rustavi 2 was added (`/ka/news/372678` style article URLs, 43 items on its listing). Its leaning is **not**
+something this code may invent: `sources.leaning_assigned` is `false` for it, and the report must exclude it
+from leaning comparisons until the owner records one. The placeholder value `independent` exists only because
+the column's constraint allows three words — the flag says plainly that it is not an editorial judgement.
+
+Ingest result: 43 discovered, **16 stored with text**, 27 pages returned no usable text (video-heavy or blocked
+article pages). That yield is poor and is reported as such.
+
+### 3. `supportive` did not grow, and the reason is structural
+
+Three independent outlets were ingested to look for commentary that would carry support:
+
+| Outlet | Publications | With text | Stance rows on our nine targets |
+|---|---|---|---|
+| Netgazeti | 32 | 31 | 1 (neutral) |
+| Publika | 1 | 1 | 1 (critical) |
+| Civil.ge | 0 | 0 | 0 |
+| Rustavi 2 | 16 | 16 | 2 (1 critical, 1 neutral) |
+
+Corpus-wide `supportive` remains **six rows**: five in Imedi, one in TV Pirveli. The conclusion is not "keep
+collecting until supportive appears" — hard-news sites rarely publish praise, and the one genre that would
+(self-praise) is labelled `neutral` by rule. So `supportive` stays a count, never a rate, and the honest next
+step for it is an opinion/commentary corpus, which none of these sites publishes as text.
+
+Label totals by source after the additions: Imedi 153, TV Pirveli 139, Rustavi 2 2, Publika 1, Netgazeti 1.
+
+Rejected:
+- **Give Rustavi 2 a leaning to complete a 3×3 table** — that is the one thing the schema's provenance rule
+  exists to prevent.
+- **Count a zero from Civil.ge as evidence** — its feed returned ten items and its robots/listing gave the
+  ingest nothing; a zero here measures the collector, not the outlet.
+- **Report `supportive` as a share of the corpus** — six rows cannot carry a percentage.
+
+Consequences: the corpus is four outlets and 1,767 publications, two of which (Rustavi 2, the independents) are
+too thin for leaning claims. The finding in D-045 stands on the two outlets that have a recorded leaning.
+Revisit if: the owner assigns Rustavi 2's leaning and it collects at a useful rate, or a commentary source is
+added for the `supportive` class.
+

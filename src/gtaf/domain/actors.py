@@ -90,6 +90,14 @@ FIRST_NAME_MAX_GAP = 1
 # apiece, inflating that actor to 79 segments from 4. No fuzzy matching below 7 characters.
 MIN_FUZZY_LEN = 7
 
+# The matcher's identity, recorded beside any number that depends on name matching.
+#
+# Measured 2026-11-28: the concordance between Imedi's site and its broadcast moved from rho 0.736 to 0.673 when
+# the strict first-name, lookalike and street rules landed — the channel did not change, the matcher did. Any
+# figure derived from mentions must name the matcher version it was computed with, and must be re-measured
+# rather than carried forward when this value changes.
+MATCHER_VERSION = "matcher-2026-11-28"
+
 # Characters that must survive exactly for a fuzzy match. Found by the G-5 spot check: `პაპაშვილი`
 # (a weather presenter, თამარ პაპაშვილი) is a different person from `პაპუაშვილი` (the parliament speaker),
 # and one deleted უ made the matcher merge them. Two real people one vowel apart is the worst case for

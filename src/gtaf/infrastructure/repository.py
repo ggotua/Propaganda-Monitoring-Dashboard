@@ -859,7 +859,7 @@ class DuckDBRepository:
         """
         query = (
             "SELECT source_id, name_en, leaning, base_url, access_mode, kind, listing_url, "
-            "active, leaning_note, sitemap_url FROM sources"
+            "active, leaning_note, sitemap_url, leaning_assigned, link_pattern FROM sources"
         )
         if active_only:
             query += " WHERE active"
@@ -877,6 +877,8 @@ class DuckDBRepository:
                 active=bool(row[7]),
                 leaning_note=str(row[8]) if row[8] is not None else None,
                 sitemap_url=str(row[9]) if row[9] is not None else None,
+                leaning_assigned=bool(row[10]),
+                link_pattern=str(row[11]) if row[11] is not None else r"/ka/siaxleebi/|/ge/",
             )
             for row in rows
         )

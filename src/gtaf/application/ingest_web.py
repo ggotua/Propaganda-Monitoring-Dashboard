@@ -181,7 +181,7 @@ def discover(
         items = tuple(RawItem(url=url, title="") for url in urls)
     else:
         items = parse_listing(
-            body, base_url=source.base_url, link_pattern=r"/ka/siaxleebi/|/ge/"
+            body, base_url=source.base_url, link_pattern=source.link_pattern
         )
     # A listing also links to sibling sections; only article URLs are publications.
     items = tuple(item for item in items if looks_like_article(item.url))

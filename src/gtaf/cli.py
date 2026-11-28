@@ -71,7 +71,7 @@ from gtaf.application.timeline import actor_timeline, topic_timeline
 from gtaf.application.topic_labels import label_topics
 from gtaf.application.topics import InsufficientDataError, run_topics
 from gtaf.application.validation import cumulative_agreement, validate_stance
-from gtaf.domain.actors import Actor
+from gtaf.domain.actors import MATCHER_VERSION, Actor
 from gtaf.domain.invariants import SUPPORTED_SCHEMA_VERSION
 from gtaf.domain.llm import (
     PRICES_CHECKED_ON,
@@ -1867,7 +1867,7 @@ def _cmd_concordance(
 
     print(
         f"{report.source_id}: {report.start} .. {report.end} | "
-        f"{report.segments} segment(s) vs {report.publications} publication(s)"
+        f"{report.segments} segment(s) vs {report.publications} publication(s) | {MATCHER_VERSION}"
     )
     print(f"\n{'actor':18} {'broadcast':>10} {'web':>8}")
     for item in report.shares:

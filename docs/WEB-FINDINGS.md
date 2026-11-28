@@ -61,3 +61,16 @@ Imedi calls Saakashvili "the convict". Under `stance-v5` this is read as legal s
 If it should count as `critical` framing, the rule belongs in `docs/STANCE-RULES.md` and the prompt version must
 change — which requires a fresh gate on a new holdout sample. Recorded, not changed: altering the prompt now
 would invalidate the 20/20.
+
+## 5. Additions since the first version, and what they changed
+
+- **A third outlet** (Rustavi 2) was added with `leaning_assigned = false`: it takes part in volume counts but is
+  excluded from every leaning comparison until the owner records a leaning. Its ingest yield is poor (16 of 43
+  pages carried usable text).
+- **Three independent outlets** (Netgazeti, Publika, Civil.ge) were ingested for commentary. They contributed
+  **three stance rows in total** on our nine figures.
+- **`supportive` did not grow**: still six rows corpus-wide. Hard news rarely carries praise, and reported
+  self-praise is `neutral` by rule, so the class needs a commentary corpus that none of these sites publishes.
+- **The matcher is frozen** as `matcher-2026-11-28`, and the concordance re-measured on it is **rho = 0.673**,
+  below the 0.7 threshold. The licence in D-036 is withdrawn permanently: the site is **not** a proxy for
+  airtime under the current name-matching rules.

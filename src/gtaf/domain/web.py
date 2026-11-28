@@ -62,6 +62,8 @@ class WebSource:
     active: bool = True
     leaning_note: str | None = None
     sitemap_url: str | None = None
+    leaning_assigned: bool = True
+    link_pattern: str = r"/ka/siaxleebi/|/ge/"
 
 
 @dataclass(frozen=True, slots=True)
@@ -475,8 +477,9 @@ def looks_like_article(url: str) -> bool:
     from urllib.parse import urlparse
 
     path = urlparse(url).path
-    # Two shapes measure the same thing: TV Pirveli writes `/139842-slug`, Imedi writes `/484181/slug`.
-    return re.search(r"/\d{3,}(?:-|/)", path) is not None
+    # Three shapes measure the same thing: TV Pirveli writes `/139842-slug`, Imedi writes `/484181/slug`, and
+    # Rustavi 2 writes `/ka/news/372678` with nothing after the number.
+    return re.search(r"/\d{3,}(?:-|/|$)", path) is not None
 
 
 def parse_sitemap_dates(xml: str) -> dict[str, datetime | None]:
