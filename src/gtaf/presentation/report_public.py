@@ -313,6 +313,19 @@ def render_public_report(report: PublicReport) -> str:
     parts.append(
         "<p class='note'>"
         + _t(
+            "Dates come from the outlet's listing where one exposes a publication time, and from the sitemap's "
+            "last-modified field otherwise. A sitemap date records the last edit, not necessarily the "
+            "publication, which is why a source can show a two-day window while its archive is older.",
+            "თარიღები აღებულია გამოცემის სიიდან, სადაც გამოქვეყნების დრო ჩანს, ხოლო სხვა შემთხვევაში — "
+            "საიტის რუკის ბოლო ცვლილების ველიდან. რუკის თარიღი ნიშნავს ბოლო რედაქტირებას და არა "
+            "აუცილებლად გამოქვეყნებას — ამიტომ წყაროს ორდღიანი ფანჯარა შეიძლება ჰქონდეს, მიუხედავად "
+            "უფრო ძველი არქივისა.",
+        )
+        + "</p>"
+    )
+    parts.append(
+        "<p class='note'>"
+        + _t(
             "Leaning labels are editorial judgements stored as data, attributable and revisable — never produced "
             "by a model. Article body text is not stored or redistributed; excerpts and hashes only.",
             "ორიენტაციის ნიშნები რედაქციული შეფასებებია, მონაცემად შენახული — არასდროს მოდელის მიერ "
