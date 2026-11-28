@@ -23,6 +23,11 @@ project's internal steering and decision documents. So the page is published by 
 
 The page appears at `https://ggotua.github.io/Propaganda-Monitoring-Dashboard/`.
 
+**The repository's default branch must be `main`.** The `github-pages` environment allows deployments only
+from the default branch, and this repository was created with `spec-000-kickoff` as its default: both workflow
+runs failed at job setup with no step executed while `main` carried all the work. Settings → General → Default
+branch → `main` fixes the deployment and also what a visitor sees first.
+
 The file is self-contained: no external stylesheet, font, script or image, so it also opens from an email
 attachment with no network.
 
