@@ -70,6 +70,17 @@ CONFUSABLE_SURNAMES: dict[str, tuple[str, ...]] = {
     "zourabichvili": ("ზურაბაშვილ",),
 }
 
+# Actors whose bare surname is shared by relatives the corpus does not track. For these, a mention requires the
+# first name or a known alias in the same text. Measured 2026-11-28: without it, stories about Adiko and Bera
+# Ivanishvili were counted as Bidzina's.
+REQUIRED_FIRST_NAMES: dict[str, tuple[str, ...]] = {
+    "ivanishvili": ("ბიძინა",),
+    # Same problem one letter apart: measured 2026-11-28, articles about Giorgi Zurabashvili (the PM's
+    # representative to Russia) spell the surname inconsistently, and one body text used "ზურაბიშვილმა" for
+    # him. Without the first name or a title word, the two cannot be told apart.
+    "zourabichvili": ("სალომე", "პრეზიდენტი", "პრეზიდენტმა"),
+}
+
 # Minimum length for fuzzy matching: short stems collide with ordinary words — measured 2026-11-20,
 # `მელია` (5 letters) matched `მედია` ("media"), `მერია` ("city hall") and `მეტია` ("more") at one edit
 # apiece, inflating that actor to 79 segments from 4. No fuzzy matching below 7 characters.
@@ -374,6 +385,26 @@ def find_mentions(text: str, actors: Sequence[Actor]) -> tuple[Mention, ...]:
         for actor_id, first_names in DISTRACTOR_FIRST_NAMES.items():
             if preceding in first_names:
                 tainted.add(actor_id)
+
+    # A confusable surname anywhere in the text means the article may be about the other person entirely:
+    # measured 2026-11-28, a piece about Giorgi Zurabashvili used "ზურაბიშვილმა" in the body and mentioned the
+    # president, so requiring a title word did not separate them. Presence of the lookalike taints the actor.
+    for actor_id, confusables in CONFUSABLE_SURNAMES.items():
+        if any(token.startswith(confusable) for token in tokens for confusable in confusables):
+            tainted.add(actor_id)
+
+    # An actor that needs a first name is skipped unless that name, or one of their aliases, appears in the text.
+    lowered_text = " ".join(tokens)
+    for actor in actors:
+        required = REQUIRED_FIRST_NAMES.get(actor.actor_id)
+        if not required:
+            continue
+        if any(name in tokens for name in required):
+            continue
+        # Aliases may be multi-word ("ბიძინა ივანიშვილი"), so they are matched against the joined text.
+        if any(alias.lower() in lowered_text for alias in actor.aliases):
+            continue
+        tainted.add(actor.actor_id)
 
     for index, token in enumerate(tokens):
         # Skip a surname used as a street name; the next token says so in Georgian.

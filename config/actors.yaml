@@ -10,7 +10,9 @@
   ka: ივანიშვილი
   en: Ivanishvili
   role: party founder
-  aliases: [ბიძინა ივანიშვილი]
+  # The surname is shared with relatives the corpus does not track (Adiko, Bera), so the matcher requires one of
+  # these to agree that a bare "ივანიშვილი" is Bidzina. Measured 2026-11-28.
+  aliases: [ბიძინა ივანიშვილი, ბიძინა, ოცნების დამფუძნებელი, საპატიო თავმჯდომარე]
 
 - id: zourabichvili
   ka: ზურაბიშვილი

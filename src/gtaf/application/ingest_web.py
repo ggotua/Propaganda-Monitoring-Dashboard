@@ -62,6 +62,10 @@ class PublicationStore(Protocol):
         """Write a publication's timestamp; returns rows written."""
         ...
 
+    def duplicate_by_body(self, *, source_id: str, body_hash: str, url: str) -> str | None:
+        """Return an existing publication with the same body text, if any."""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class IngestResult:
@@ -82,6 +86,7 @@ class IngestResult:
     blocked_by_robots: int
     failed: int
     with_text: int
+    duplicates: int = 0
 
 
 def backfill_dates(source: WebSource, fetcher: Fetcher, store: PublicationStore) -> int:
@@ -216,6 +221,7 @@ def ingest_source(
     blocked = 0
     failed = 0
     with_text = 0
+    duplicates = 0
 
     for item in items:
         title = item.title
@@ -237,6 +243,14 @@ def ingest_source(
                 digest = body_fingerprint(excerpt)
                 chars = len(excerpt)
                 with_text += 1
+                duplicate = store.duplicate_by_body(
+                    source_id=source.source_id, body_hash=digest, url=item.url
+                )
+                if duplicate:
+                    # Republished under a second URL: storing it twice would double one opinion's weight
+                    # (measured 2026-11-28 on an Imedi article that appeared as two publications).
+                    duplicates += 1
+                    continue
             if not title:
                 title = _title_from_page(page, fallback=item.url)
 
@@ -263,6 +277,7 @@ def ingest_source(
         blocked_by_robots=blocked,
         failed=failed,
         with_text=with_text,
+        duplicates=duplicates,
     )
 
 

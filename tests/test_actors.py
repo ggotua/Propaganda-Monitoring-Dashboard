@@ -130,8 +130,12 @@ def test_stopwords_never_match() -> None:
 
 
 def test_find_mentions_counts_once_per_segment() -> None:
-    """Repeating a name in one segment is one mention: the unit is 'mentioned here', not frequency."""
-    text = "სააკაშვილი და ივანიშვილი შეხვდნენ. სააკაშვილი კომენტარს არ აკეთებს."
+    """Repeating a name in one segment is one mention: the unit is 'mentioned here', not frequency.
+
+    The first name is included because Bidzina Ivanishvili now requires it: the surname is shared with relatives
+    the corpus does not track (measured 2026-11-28).
+    """
+    text = "სააკაშვილი და ბიძინა ივანიშვილი შეხვდნენ. სააკაშვილი კომენტარს არ აკეთებს."
     mentions = find_mentions(text, (IVANISHVILI, SAKASHVILI))
 
     assert sorted(m.actor_id for m in mentions) == ["ivanishvili", "saakashvili"]

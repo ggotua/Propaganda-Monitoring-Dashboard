@@ -1705,3 +1705,47 @@ fixes here were pipeline repairs, not prompt tuning, which is what keeps the she
 restored-text run still misses `critical` on rows whose text is present, which would move the question from
 plumbing back to the model.
 
+---
+
+## D-043: The publication gate passes at 28/30 with exact labels; name matching is now strict, and stale labels are impossible
+
+Status: Accepted (2026-11-28). Sixth review, on the sheet whose text had been restored.
+
+Context: **28/30 = 93 %, exact matches, no merging of `neutral` and `unclear`.** Every stance judgement on the
+text itself was correct, including five the earlier runs got wrong: Saakashvili's "Ivanishvili destroyed
+everything", "the bandit Bidzina", the outlet calling something Kobakhidze's "scandalous statement", Kupradze's
+vocative piece, and Chotorlishvili's defence. The reviewer's conclusion: **the model passes the gate; what
+remains is name matching.**
+
+Both remaining disagreements were pipeline, and both were the same root cause: **labels outlived the text they
+were computed on.** A `critical` label for Ivanishvili survived a re-extraction that removed his only mention
+(it had been a related-article teaser), and namesakes were still matched.
+
+Fixes, all verified on the stored corpus:
+
+| Rule | Verification |
+|---|---|
+| Labels die with the text they described | `upsert_publication` deletes a publication's stance rows when its body hash changes; migration 013 stores `text_hash` so staleness is detectable. Re-labelled from scratch: 257 rows, no stale ones |
+| Bidzina needs his first name or a known alias | `REQUIRED_FIRST_NAMES`; alias list extended to "ბიძინა", "ოცნების დამფუძნებელი", "საპატიო თავმჯდომარე". Corpus check: **0** Ivanishvili labels whose text lacks all of them |
+| Zurabashvili is not Zourabichvili | the lookalike surname taints the actor for the whole text, because the outlet spells the same person's name both ways in one article. Corpus check: **0** Zourabichvili labels on texts that mention Zurabashvili |
+| Republished articles are stored once | `duplicate_by_body` skips a second URL with an identical body; **0** duplicate body hashes remain across 1,432 publications |
+
+The cost is stated rather than hidden: the strict Ivanishvili rule reduced his labelled publications from 45 to
+**24**. That is the price of "0 name collisions", and it is a recall loss in the incumbent-side counts — the
+trade the reviewer asked for, recorded so a future reader does not mistake the smaller n for a shrinking corpus.
+
+Corpus: **1,432 publications** (Imedi 821, TV Pirveli 611), 257 stance rows over 9 targets, 108 publications
+skipped from stance because they carry no body text.
+
+Rejected:
+- **Keep the loose surname rule and accept namesake noise** — measured: it put Adiko's concert into Bidzina's
+  counts, and Bidzina is the single most quoted figure in the corpus.
+- **Recompute labels lazily at read time** — a label would then change meaning without any record; deleting on
+  text change keeps every stored label a statement about stored text.
+- **Keep both copies of a republished article** — one opinion would carry double weight in every share.
+
+Consequences: the publication pipeline is gate-ready. The next step is the 12-row spot check
+(`reports/g8-web-spotcheck.csv`) to confirm the name rules did not break ordinary cases, then the full-corpus
+labelling run and the report line stating G-8 with its class coverage. Revisit if: the spot check shows ordinary
+mentions disappearing, which would mean the strict rules over-tightened.
+

@@ -121,11 +121,13 @@ def test_namesake_taints_the_whole_text() -> None:
     assert find_mentions(text, (ivanishvili,)) == ()
 
 
-def test_bare_surname_still_matches() -> None:
-    """The guard must not remove ordinary references: dropping a bare surname would erase most of the corpus."""
+def test_bare_surname_requires_the_first_name() -> None:
+    """Measured 2026-11-28: the reviewer required Bidzina's first name or a known alias before matching him,
+    because "ივანიშვილი" alone is shared with relatives the corpus does not track."""
     ivanishvili = Actor(actor_id="ivanishvili", ka="ივანიშვილი", en="Ivanishvili", aliases=())
 
-    assert find_mentions("ივანიშვილმა დღეს განაცხადა, რომ მოლაპარაკებები გაგრძელდება.", (ivanishvili,)) != ()
+    assert find_mentions("ივანიშვილმა დღეს განაცხადა, რომ მოლაპარაკებები გაგრძელდება.", (ivanishvili,)) == ()
+    assert find_mentions("ბიძინა ივანიშვილმა დღეს განაცხადა, რომ მოლაპარაკებები გაგრძელდება.", (ivanishvili,)) != ()
 
 
 def test_teaser_outside_the_body_container_is_excluded() -> None:

@@ -756,6 +756,27 @@ class DuckDBRepository:
         ).fetchall()
         return {str(row[0]): str(row[1]) for row in rows}
 
+    def duplicate_by_body(self, *, source_id: str, body_hash: str, url: str) -> str | None:
+        """Return an existing publication with the same body text, if any.
+
+        Args:
+            source_id: Source to search.
+            body_hash: Hash of the extracted body.
+            url: URL being ingested, which is allowed to match itself.
+
+        Returns:
+            The other publication's URL, or None.
+
+        Notes:
+            Measured 2026-11-28: Imedi republished one article under two URLs, and both rows carried the same
+            labels, so a single opinion was counted twice.
+        """
+        row = self._conn.execute(
+            "SELECT url FROM publications WHERE source_id = ? AND body_hash = ? AND url <> ? LIMIT 1",
+            [source_id, body_hash, url],
+        ).fetchone()
+        return str(row[0]) if row is not None else None
+
     def publication_stats(self) -> tuple[tuple[str, str, int, int, str | None, str | None], ...]:
         """Return per-source counts and date coverage.
 
@@ -876,9 +897,10 @@ class DuckDBRepository:
         """
         self._conn.execute("BEGIN TRANSACTION")
         try:
-            existing = self._conn.execute(
-                "SELECT 1 FROM publications WHERE publication_id = ?", [row[0]]
+            previous = self._conn.execute(
+                "SELECT body_hash FROM publications WHERE publication_id = ?", [row[0]]
             ).fetchone()
+            existing = previous is not None
             if existing:
                 # A plain UPDATE, not ON CONFLICT DO UPDATE: DuckDB implements the latter as delete+insert,
                 # and `publication_stance` references this row, so it fails with a foreign-key error
@@ -901,6 +923,13 @@ class DuckDBRepository:
                     "programme, excerpt, body_hash, body_chars, fetched_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     list(row),
+                )
+            # Labels computed on the previous text are stale: measured 2026-11-28, a `critical` label for
+            # Ivanishvili survived a re-extraction that removed his only mention (it was a related-article
+            # teaser). A label must always describe the text that is stored now.
+            if existing and (previous is None or previous[0] != row[7]):
+                self._conn.execute(
+                    "DELETE FROM publication_stance WHERE publication_id = ?", [row[0]]
                 )
             self._conn.execute("COMMIT")
         except Exception:
