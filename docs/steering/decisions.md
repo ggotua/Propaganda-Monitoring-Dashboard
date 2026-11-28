@@ -1790,3 +1790,58 @@ Consequences: the publication corpus is fully labelled and its numbers may be re
 G-8 conditional" attached. Revisit if: the 20-row check scores below 0.80, or the strict name rules visibly drop
 ordinary mentions once the report is read.
 
+---
+
+## D-045: Final gate 20/20; the first web finding; and the concordance licence is withdrawn
+
+Status: Accepted (2026-11-28). Seventh review, on the fully labelled corpus.
+
+Context: the final random 20-row check came back **20/20**, including 4 `critical` and 1 `supportive` row, with
+no wrong-person rows, no teaser text and no duplicates. Four checks, four passes: 37/40, 27/30, 28/30, and
+32/32 across the last two.
+
+### 1. The first substantive finding
+
+| Figures | Outlet | n | `critical` | `supportive` |
+|---|---|---|---|---|
+| Government figures (7) | Imedi (pro-government) | 107 | **0 (0.0 %)** | 4 |
+| Government figures (7) | TV Pirveli (opposition) | 117 | **29 (24.8 %)** | 1 |
+| Opposition figures (2) | Imedi (pro-government) | 37 | **26 (70.3 %)** | 1 |
+| Opposition figures (2) | TV Pirveli (opposition) | 22 | **3 (13.6 %)** | 0 |
+
+Each outlet evaluates its own side favourably and the other side unfavourably, and the cleanest single number
+is the first row: **107 Imedi items naming a government figure, none labelled critical**, against 29 of 117 in
+the opposition outlet. In the other direction Imedi is sharply critical of Saakashvili (26 of 37), which rules
+out "the model cannot label criticism" as the explanation for its own zero.
+
+### 2. The concordance licence is withdrawn
+
+Re-measuring site-versus-broadcast after the name-matching fixes gives **rho = 0.673**, below the 0.7 threshold,
+where D-036 recorded **0.736**. The change is not the channel: the strict first-name and lookalike rules moved
+**both** sides. Broadcast Ivanishvili share fell from 0.45 % to 0.33 %, Kobakhidze rose from 1.94 % to 2.27 %,
+and web shares moved further still.
+
+So D-036's conclusion — "on 3–13 November Imedi's site tracked its airtime" — **does not survive the pipeline
+change**. It was a statement about a measurement, not about the outlet, and it is withdrawn. Every web figure is
+again described as "what the site published". Re-measure only after the matcher is frozen, and record the
+matcher version beside the number.
+
+### 3. Codebook: "the convict" stays neutral
+
+Imedi calls Saakashvili "the convict"; `stance-v5` reads it as legal status and labels it `neutral`, and the
+reviewer agreed the reading is defensible. If it should count as `critical` framing, the rule belongs in
+`STANCE-RULES.md` and the prompt must move to v6 — which requires a fresh holdout and a new gate. Doing that
+now would invalidate the 20/20 just obtained, so it is recorded as an open codebook question, not applied.
+
+Rejected:
+- **Keep the 0.736 concordance licence** — the number was produced by a superseded matcher.
+- **Quietly report 0.673 without noting the withdrawal** — a licence that changes with the tool must be stated
+  as version-bound.
+- **Change the prompt to catch one epithet** — one codebook line is not worth a full re-validation cycle, and
+  the reviewer did not ask for it.
+
+Consequences: `docs/WEB-FINDINGS.md` carries the finding and its limits; the web report states the G-8 position
+(28/30 exact, 20/20 random, critical recall 4/5, `supportive` as a count only); the concordance section now
+reports "below threshold". Revisit if: a frozen matcher restores rho above 0.7 on the same window, or the
+codebook question about epithets is decided with a v6 prompt.
+

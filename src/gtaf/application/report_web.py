@@ -209,10 +209,12 @@ def build_web_report(
         ),
         caveats=(
             "This is the web corpus. It is not airtime and never merged with broadcast segments (D-034).",
-            "Stance is labelled on a 1,500-character excerpt by a language model, not by a human. "
-            "The web corpus has no human agreement figure yet (G-8 is unmet here).",
-            "`unclear` is a large class for the opposition outlet; treat it as an unstable boundary, "
-            "not as neutrality.",
-            "Concordance was measured on one channel and one window; it does not generalise.",
+            "Stance is labelled by a language model (stance-v5) on a 1,500-character excerpt, not by a human. "
+            "Human agreement on the final checks was 28/30 exact and 20/20 on a random draw; critical recall "
+            "was measured at 4/5. Treat the direction as evidence and the exact share as indicative.",
+            "`supportive` is thin: six rows across the whole corpus. It is reported as a count, never as a rate.",
+            "`unclear` is a boundary class; a large share signals definition trouble, not neutrality.",
+            "Concordance with the broadcast was measured once, on one outlet and one window; it does not "
+            "generalise to the other outlet.",
         ),
     )
