@@ -47,6 +47,7 @@ from gtaf.application.initialize import (
 from gtaf.application.methods import ACTIVE_SEG_METHOD
 from gtaf.application.networks import build_network
 from gtaf.application.report import build_report
+from gtaf.application.report_public import build_public_report
 from gtaf.application.report_web import ConcordanceBlock, build_web_report
 from gtaf.application.review_web import (
     build_sample,
@@ -106,6 +107,7 @@ from gtaf.infrastructure.topics_bertopic import BertopicEngine
 from gtaf.infrastructure.web_fetch import BrowserFetcher
 from gtaf.infrastructure.youtube import YtDlpSource, list_uploads_rss
 from gtaf.presentation.report_html import render_html
+from gtaf.presentation.report_public import render_public_report
 from gtaf.presentation.report_web import render_web_report
 
 EXIT_OK = 0
@@ -410,6 +412,10 @@ def _build_parser() -> argparse.ArgumentParser:
     score_web = sub.add_parser("score-web", help="score a filled stance review (G-8, web corpus)")
     score_web.add_argument("--csv", type=Path, required=True)
     score_web.add_argument("--min", type=int, default=30)
+
+    report_public = sub.add_parser("report-public", help="build the bilingual public report")
+    report_public.add_argument("--db", type=Path, default=Path("data/gtaf.duckdb"))
+    report_public.add_argument("--out", type=Path, default=Path("site/index.html"))
 
     return parser
 
@@ -2069,6 +2075,42 @@ def _cmd_score_web(*, csv_path: Path, minimum: int) -> int:
     return EXIT_OK
 
 
+def _cmd_report_public(*, db_path: Path, out_path: Path) -> int:
+    """Build the bilingual public report (SPEC-018).
+
+    Args:
+        db_path: Database file, read-only.
+        out_path: Destination HTML, normally ``site/index.html``.
+
+    Returns:
+        Process exit code.
+    """
+    conn = open_database(db_path, read_only=True)
+    try:
+        repo = DuckDBRepository(conn)
+        sources = repo.list_web_sources(active_only=False)
+        report = build_public_report(
+            repo,
+            generated_on=datetime.now(UTC).date(),
+            leaning_assigned={item.source_id: item.leaning_assigned for item in sources},
+            versions=(
+                ("schema", SUPPORTED_SCHEMA_VERSION),
+                ("matcher", MATCHER_VERSION),
+                ("prompt", PROMPT_VERSION),
+            ),
+        )
+    finally:
+        conn.close()
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(render_public_report(report), encoding="utf-8")
+    print(f"wrote {out_path} ({out_path.stat().st_size / 1024:.0f} KB)")
+    print(
+        f"publications: {report.publications} | labels: {report.labels} | groups: {len(report.groups)}"
+    )
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI.
 
@@ -2136,6 +2178,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if args.command == "runs":
             return _cmd_runs(db_path=args.db, limit=args.limit)
+        if args.command == "report-public":
+            return _cmd_report_public(db_path=args.db, out_path=args.out)
         if args.command == "review-web":
             return _cmd_review_web(
                 db_path=args.db,
