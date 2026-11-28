@@ -92,7 +92,7 @@ class PublicReport:
     Attributes:
         generated_on: Build date.
         publications: Corpus size.
-        sources: ``(source_id, leaning, leaning_assigned, total, first_day, last_day)``.
+        sources: ``(source_id, leaning, leaning_assigned, total, dated, first_day, last_day)``.
         groups: Headline table cells.
         targets: Per-target table rows.
         labels: Total stance labels.
@@ -101,10 +101,11 @@ class PublicReport:
 
     generated_on: date
     publications: int
-    sources: tuple[tuple[str, str, bool, int, str | None, str | None], ...]
+    sources: tuple[tuple[str, str, bool, int, int, str | None, str | None], ...]
     groups: tuple[GroupRow, ...]
     targets: tuple[TargetRow, ...]
     labels: int
+    labels_by_source: tuple[tuple[str, int], ...]
     versions: tuple[tuple[str, str], ...]
 
 
@@ -137,16 +138,19 @@ def build_public_report(
             str(leaning),
             bool(leaning_assigned.get(str(source_id), True)),
             int(total),
+            int(dated),
             str(first)[:10] if first else None,
             str(last)[:10] if last else None,
         )
-        for source_id, leaning, total, _dated, first, last in stats
+        for source_id, leaning, total, dated, first, last in stats
     )
 
     per_target: dict[str, dict[str, dict[str, int]]] = {}
+    by_source: dict[str, int] = {}
     for target in (*GOVERNMENT_FIGURES, *OPPOSITION_FIGURES):
-        for leaning, _source, label, count in reader.publication_stance_counts(target):
+        for leaning, source, label, count in reader.publication_stance_counts(target):
             per_target.setdefault(target, {}).setdefault(leaning, {})[label] = int(count)
+            by_source[source] = by_source.get(source, 0) + int(count)
 
     groups: list[GroupRow] = []
     for group, targets in (
@@ -195,5 +199,6 @@ def build_public_report(
         labels=sum(
             sum(counts.values()) for counts_by_target in per_target.values() for counts in counts_by_target.values()
         ),
+        labels_by_source=tuple(sorted(by_source.items(), key=lambda item: item[1], reverse=True)),
         versions=versions,
     )

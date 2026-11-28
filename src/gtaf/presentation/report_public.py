@@ -120,7 +120,7 @@ def render_public_report(report: PublicReport) -> str:
         (row for row in report.groups if row.group == "opposition" and row.leaning == "pro-government"),
         None,
     )
-    assigned = sum(1 for _id, _leaning, is_assigned, _total, _first, _last in report.sources if is_assigned)
+    sum(1 for _id, _leaning, is_assigned, _t, _d, _f, _l in report.sources if is_assigned)
     total_labels = report.labels
 
     parts: list[str] = [
@@ -137,9 +137,10 @@ def render_public_report(report: PublicReport) -> str:
         "<p class='lede'>"
         + _t(
             "Georgian political coverage on the websites of Imedi (pro-government) and TV Pirveli "
-            "(opposition), 3 November through 28 November 2026.",
+            "(opposition), November 2026. Each source's actual window and date coverage is listed in section 4.",
             "ქართული პოლიტიკური გაშუქება იმედის (მთავრობის მხარდამჭერი) და ტვ პირველის "
-            "(ოპოზიციური) ვებგვერდებზე, 2026 წლის 3-28 ნოემბერი.",
+            "(ოპოზიციური) ვებგვერდებზე, 2026 წლის ნოემბერი. თითოეული წყაროს ფაქტობრივი პერიოდი და "
+            "დათარიღების სისრულე მოცემულია მე-4 ნაწილში.",
         )
         + "</p>",
         "</header>",
@@ -265,10 +266,14 @@ def render_public_report(report: PublicReport) -> str:
         + "</li>"
         f"<li>{_t('Two outlets carry the finding.', 'დასკვნას ორი მედია ატარებს.')} "
         + _t(
-            f"Only {assigned} of {len(report.sources)} sources have an editorial leaning recorded; the rest are "
-            "excluded from comparisons by leaning.",
-            f"მხოლოდ {assigned} მედიას აქვს ჩაწერილი რედაქციული ორიენტაცია {len(report.sources)}-დან; "
-            "დანარჩენი შედარებიდან გამორიცხულია.",
+            "The comparison rests on Imedi and TV Pirveli, which hold "
+            f"{sum(count for _source, count in report.labels_by_source[:2])} of the {report.labels} stance rows. "
+            "The other outlets contribute a handful between them, and Rustavi 2 has no editorial leaning "
+            "recorded at all — it is marked unassigned and excluded from every leaning comparison.",
+            "შედარება ეყრდნობა იმედსა და ტვ პირველს — მათზე მოდის "
+            f"{sum(count for _source, count in report.labels_by_source[:2])} ნიშანი {report.labels}-დან. "
+            "დანარჩენი მედია ერთად რამდენიმე ჩანაწერს იძლევა, ხოლო Rustavi 2-ს რედაქციული ორიენტაცია "
+            "საერთოდ არ აქვს ჩაწერილი და ყოველი შედარებიდან გამორიცხულია.",
         )
         + "</li>"
         f"<li>{_t('This is a classifier, not a reader.', 'ეს კლასიფიკატორია და არა მკითხველი.')} "
@@ -293,8 +298,13 @@ def render_public_report(report: PublicReport) -> str:
         + _t("window", "პერიოდი")
         + "</th></tr>"
     )
-    for source_id, leaning, is_assigned, total, first, last in report.sources:
-        window = f"{first} to {last}" if first and last else _t("not dated", "უთარიღო")
+    for source_id, leaning, is_assigned, total, dated, first, last in report.sources:
+        # A window computed from partial dates would claim the outlet published for two days when most of its
+        # items simply carry no timestamp. Show the coverage instead of the misleading range.
+        if first and last and dated:
+            window = f"{first} to {last} · {dated}/{total} dated"
+        else:
+            window = _t(f"no dates · {dated}/{total} dated", f"უთარიღო · {dated}/{total} დათარიღებული")
         parts.append(
             f"<tr><td>{html.escape(source_id)}</td><td>{_leaning_tag(leaning, is_assigned)}</td>"
             f"<td class='num'>{total}</td><td>{window}</td></tr>"
