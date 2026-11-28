@@ -112,6 +112,31 @@ def test_different_first_name_same_surname_is_not_the_actor() -> None:
     assert find_mentions("ბერა ივანიშვილი კონცერტს გამართავს.", (ivanishvili,)) == ()
 
 
+def test_first_name_alone_is_not_the_actor() -> None:
+    """Measured 2026-11-28: an alias of "ბიძინა" alone matched Bidzina Giorgobiani, a different politician, so
+    the alias was removed and the first name now has to stand next to the surname."""
+    ivanishvili = Actor(
+        actor_id="ivanishvili", ka="ივანიშვილი", en="Ivanishvili", aliases=("ბიძინა ივანიშვილი",)
+    )
+
+    assert find_mentions("ბიძინა გიორგობიანი: ხელისუფლებამ თავი უნდა დაანებოს.", (ivanishvili,)) == ()
+    assert find_mentions("ბიძინა ივანიშვილმა დღეს განაცხადა, რომ მოლაპარაკებები გაგრძელდება.", (ivanishvili,)) != ()
+
+
+def test_phrase_alias_names_the_actor_without_the_surname() -> None:
+    """"ოცნების დამფუძნებელი" is how the outlets name him without the surname."""
+    ivanishvili = Actor(
+        actor_id="ivanishvili",
+        ka="ივანიშვილი",
+        en="Ivanishvili",
+        aliases=("ბიძინა ივანიშვილი", "ოცნების დამფუძნებელი"),
+    )
+
+    mentions = find_mentions("ოცნების დამფუძნებელი დღეს შეხვედრას გამართავს.", (ivanishvili,))
+
+    assert [mention.actor_id for mention in mentions] == ["ivanishvili"]
+
+
 def test_namesake_taints_the_whole_text() -> None:
     """Measured 2026-11-27: a story about Adiko Ivanishvili also said "ივანიშვილი" later, so dropping only the
     namesake token left Bidzina in place for that article."""

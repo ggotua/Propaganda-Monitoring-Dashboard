@@ -17,6 +17,7 @@ from gtaf.domain.web import (
     WebSource,
     body_fingerprint,
     dedupe_by_title,
+    dedupe_key,
     extract_excerpt,
     looks_like_article,
     newest_first,
@@ -240,7 +241,9 @@ def ingest_source(
                 continue
             excerpt = extract_excerpt(page)
             if excerpt:
-                digest = body_fingerprint(excerpt)
+                # Title plus the opening 200 characters: Imedi republishes the same article under a new id, and a
+                # full-body hash did not catch it when the tail differed (measured 2026-11-28).
+                digest = body_fingerprint(dedupe_key(title, excerpt))
                 chars = len(excerpt)
                 with_text += 1
                 duplicate = store.duplicate_by_body(

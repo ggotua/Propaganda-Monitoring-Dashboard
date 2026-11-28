@@ -1749,3 +1749,44 @@ Consequences: the publication pipeline is gate-ready. The next step is the 12-ro
 labelling run and the report line stating G-8 with its class coverage. Revisit if: the spot check shows ordinary
 mentions disappearing, which would mean the strict rules over-tightened.
 
+---
+
+## D-044: Spot check 12/12; the first name alone was a false friend, and the dedupe key needed normalisation
+
+Status: Accepted (2026-11-28). Spot check passed, then the full corpus was labelled.
+
+Context: the 12-row spot check came back **12/12**, and the three rows the reviewer had flagged (Adiko
+Ivanishvili, the pardons article with no Ivanishvili in it, the Zurabashvili pair) were gone. Two new defects
+appeared, both mine:
+
+| Defect | Cause | Fix |
+|---|---|---|
+| Bidzina Giorgobiani counted as Bidzina Ivanishvili | I had put **"ბიძინა" alone in the alias list**, so the first name matched as an actor of its own | bare first name removed from aliases; a required first name must now stand **next to** the surname (gap ≤ 1 token) or appear in a multi-word alias |
+| The republished article survived dedupe | the two copies differed in typographic quotes („…” vs „…“) and in Imedi's leading stamp ("უკან 25 ნოემბერი 2026, 10:13") | `dedupe_key` normalises quotes, strips the leading stamp and collapses whitespace; the key is title + first 200 characters, as the reviewer asked |
+| Multi-word aliases never matched | `match_token` compares single tokens, so "ოცნების დამფუძნებელი" could never match | phrase aliases are now searched in the joined text and recorded as `alias` mentions |
+
+Full-corpus labelling (v5, cleaned text, strict names): **1,699 publications**, **283 stance rows** over 9
+targets, **121** publications skipped for having no body text.
+
+| Leaning | critical | neutral | supportive | unclear |
+|---|---|---|---|---|
+| opposition (TV Pirveli) | 32 | 92 | 1 | 14 |
+| pro-government (Imedi) | 26 | 112 | 5 | 1 |
+
+The pro-government column's 26 `critical` labels are not a contradiction: Imedi criticises opposition figures,
+and Saakashvili is one of the nine targets.
+
+Final check sheet: `reports/g8-web-random20.csv` — 20 random rows, minimum excerpt **540 characters**, model
+labels critical 3, neutral 15, supportive 1, unclear 1.
+
+Rejected:
+- **Accept a bare first name as an alias** — it matched a different politician with the same first name, which
+  is the same class of error the surname rules exist to prevent.
+- **Dedupe on title alone** — two different articles can share a headline.
+- **Dedupe on the full body** — it missed a republication whose tail differed, which is what the 200-character
+  key is for.
+
+Consequences: the publication corpus is fully labelled and its numbers may be reported with "model-labelled,
+G-8 conditional" attached. Revisit if: the 20-row check scores below 0.80, or the strict name rules visibly drop
+ordinary mentions once the report is read.
+

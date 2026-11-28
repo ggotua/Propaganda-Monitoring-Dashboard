@@ -81,6 +81,10 @@ REQUIRED_FIRST_NAMES: dict[str, tuple[str, ...]] = {
     "zourabichvili": ("სალომე", "პრეზიდენტი", "პრეზიდენტმა"),
 }
 
+# A first name is only a signal next to its surname. "ბიძინა გიორგობიანი" is not Bidzina Ivanishvili, and an
+# alias of "ბიძინა" alone matched him (measured 2026-11-28).
+FIRST_NAME_MAX_GAP = 1
+
 # Minimum length for fuzzy matching: short stems collide with ordinary words — measured 2026-11-20,
 # `მელია` (5 letters) matched `მედია` ("media"), `მერია` ("city hall") and `მეტია` ("more") at one edit
 # apiece, inflating that actor to 79 segments from 4. No fuzzy matching below 7 characters.
@@ -393,16 +397,25 @@ def find_mentions(text: str, actors: Sequence[Actor]) -> tuple[Mention, ...]:
         if any(token.startswith(confusable) for token in tokens for confusable in confusables):
             tainted.add(actor_id)
 
-    # An actor that needs a first name is skipped unless that name, or one of their aliases, appears in the text.
-    lowered_text = " ".join(tokens)
+    # An actor that needs a first name is skipped unless that name stands next to the surname, or one of their
+    # aliases appears in the text. "ბიძინა" three paragraphs away from "ივანიშვილი" is two different people.
+    joined = " ".join(tokens)
     for actor in actors:
         required = REQUIRED_FIRST_NAMES.get(actor.actor_id)
         if not required:
             continue
-        if any(name in tokens for name in required):
+        prefix = actor.ka.lower()[:6]
+        adjacent = False
+        for index, token in enumerate(tokens):
+            if token not in required:
+                continue
+            window = tokens[index + 1 : index + 1 + FIRST_NAME_MAX_GAP]
+            if any(candidate.startswith(prefix) for candidate in window):
+                adjacent = True
+                break
+        if adjacent:
             continue
-        # Aliases may be multi-word ("ბიძინა ივანიშვილი"), so they are matched against the joined text.
-        if any(alias.lower() in lowered_text for alias in actor.aliases):
+        if any(" " in alias and alias.lower() in joined for alias in actor.aliases):
             continue
         tainted.add(actor.actor_id)
 
@@ -418,6 +431,16 @@ def find_mentions(text: str, actors: Sequence[Actor]) -> tuple[Mention, ...]:
             if mention is not None and mention.actor_id not in seen:
                 seen.add(mention.actor_id)
                 mentions.append(mention)
+                break
+
+    # A multi-word alias can name an actor without the surname appearing at all ("ოცნების დამფუძნებელი").
+    for actor in actors:
+        if actor.actor_id in seen or actor.actor_id in tainted:
+            continue
+        for alias in actor.aliases:
+            if " " in alias and alias.lower() in joined:
+                seen.add(actor.actor_id)
+                mentions.append(Mention(actor.actor_id, alias, "alias", 1.0))
                 break
     return tuple(mentions)
 

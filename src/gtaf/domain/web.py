@@ -400,6 +400,39 @@ def extract_excerpt(page: str, *, max_chars: int = 1500) -> str:
     return joined[:max_chars]
 
 
+# Typographic quote marks normalised out of the dedupe key. Written as escapes so the linter does not read them
+# as ambiguous punctuation: U+201E, U+201C, U+201D, U+0022, U+0027, U+2018, U+2019, U+00AB, U+00BB.
+_QUOTE_MARKS = str.maketrans(
+    {chr(code): " " for code in (0x201E, 0x201C, 0x201D, 0x22, 0x27, 0x2018, 0x2019, 0xAB, 0xBB)}
+)
+_EXTRA_SPACE = re.compile(r"\s+")
+# Imedi prefixes the stored excerpt with its own publication stamp ("უკან 25 ნოემბერი 2026, 10:13"), which
+# differs between two fetches of the same article and made identical republications look different.
+_LEADING_STAMP = re.compile(r"^\s*უკან\s+\d{1,2}\s+\S+\s+\d{4},?\s*\d{1,2}:\d{2}\s*")
+
+
+def dedupe_key(title: str, excerpt: str, *, prefix_chars: int = 200) -> str:
+    """Return a normalised key for detecting a republished article.
+
+    Args:
+        title: Headline.
+        excerpt: Stored excerpt.
+        prefix_chars: How much of the excerpt to compare.
+
+    Returns:
+        Case-folded text with typographic quotes, a leading publication stamp and runs of whitespace removed.
+
+    Notes:
+        Measured 2026-11-28: Imedi published one article under two ids; the titles differed only in quote
+        characters („ოცნების” vs „ოცნების“) and the excerpts only in the leading timestamp.
+    """
+    body = f"{title}|{excerpt[:prefix_chars]}".translate(_QUOTE_MARKS)
+    body = _LEADING_STAMP.sub("", body.split("|", 1)[0]) + "|" + _LEADING_STAMP.sub(
+        "", body.split("|", 1)[1]
+    )
+    return _EXTRA_SPACE.sub(" ", body).strip().casefold()
+
+
 def body_fingerprint(text: str) -> str:
     """Return a stable hash of article text.
 

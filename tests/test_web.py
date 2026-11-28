@@ -145,6 +145,16 @@ def test_extract_excerpt_drops_the_navigation_paragraph() -> None:
     assert "სპორტი" not in excerpt
 
 
+def test_dedupe_key_ignores_typographic_quotes() -> None:
+    """Measured 2026-11-28: one Imedi article ran under two ids, and the titles differed only in quote marks."""
+    from gtaf.domain.web import dedupe_key
+
+    first = dedupe_key("შედეგია „ოცნების” მმართველობის", "ტექსტი")
+    second = dedupe_key("შედეგია „ოცნების“ მმართველობის", "ტექსტი")
+
+    assert first == second
+
+
 def test_dedupe_by_title_keeps_the_first() -> None:
     """Sites republish one story under two URLs; storing both doubles a topic's apparent activity."""
     items = (
