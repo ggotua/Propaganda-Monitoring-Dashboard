@@ -1,0 +1,47 @@
+# Publishes site/ to GitHub Pages.
+#
+# GitHub's "deploy from a branch" setting only offers / (root) or /docs, and docs/ holds the project's internal
+# steering and decision documents — publishing them would expose working notes beside a public report. A Pages
+# workflow takes any path, so the public artefact stays in site/ and the internal documents stay internal.
+#
+# One setting must be chosen by the repository owner, once:
+#   Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+
+name: Deploy public report
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

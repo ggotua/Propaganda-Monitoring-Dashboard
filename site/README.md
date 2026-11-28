@@ -8,15 +8,23 @@
 
 ## Publishing
 
-The file is self-contained: no external stylesheet, font, script or image, so it opens from an email attachment
-and can be served as-is.
+GitHub's "deploy from a branch" option only accepts `/` or `/docs` as the folder, and `docs/` holds this
+project's internal steering and decision documents. So the page is published by a workflow instead:
 
-**GitHub Pages:** in the repository settings, set *Pages → Build and deployment → Source: Deploy from a branch*,
-branch `main`, folder `/site`. The page appears at `https://ggotua.github.io/Propaganda-Monitoring-Dashboard/`.
+```
+.github/workflows/pages.yml
+```
 
-Because the page is regenerated from data, treat it as a build artefact: regenerate and commit after each
-corpus or prompt change, and keep the provenance line in the footer (schema, matcher, prompt versions) so a
-reader can tell which measurement produced which number.
+**One setting, chosen once by the repository owner:**
+
+1. Open https://github.com/ggotua/Propaganda-Monitoring-Dashboard/settings/pages
+2. **Build and deployment → Source: GitHub Actions**
+3. Save. The next push to `site/**` publishes automatically; `workflow_dispatch` runs it by hand.
+
+The page appears at `https://ggotua.github.io/Propaganda-Monitoring-Dashboard/`.
+
+The file is self-contained: no external stylesheet, font, script or image, so it also opens from an email
+attachment with no network.
 
 ## What must stay true in every regeneration
 
